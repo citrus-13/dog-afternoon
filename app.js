@@ -1,4 +1,4 @@
-import {DogScene} from './scene.js?v=steady-care-10';
+import {DogScene} from './scene.js?v=felt-touch-12';
 import {DogSound} from './sound.js?v=soft-touch-7';
 import {bindCare} from './care-ui.js?v=rana-bichon-5';
 
@@ -48,6 +48,8 @@ function showTouchFeedback(visible){
 function resetTouchFeedback(){feedbackKey='';feedbackUntil=0;showTouchFeedback(false);}
 function touchCaption(zone,behavior){
   const responses=touchResponses[zone];
+  if(behavior==='touch')return touchLabels[zone]+' · 轻触了一下';
+  if(behavior==='brush')return touchLabels[zone]+' · 顺着手轻轻动';
   if(!Object.hasOwn(responses,behavior))return touchLabels[zone];
   const response=zone==='tail'&&stage.dataset.contact==='false'?'松手后慢慢收回':responses[behavior];
   return touchLabels[zone]+' · '+response;
@@ -107,14 +109,16 @@ function clearKeys(){heldKeys.clear();key=null;}
 function clearInput(){
   clearKeys();
   const captured=pointerId;pointerId=null;
-  if(captured!==null&&stage.hasPointerCapture(captured))stage.releasePointerCapture(captured);
+  if(captured!==null){try{if(stage.hasPointerCapture?.(captured))stage.releasePointerCapture?.(captured);}catch{}}
   scene?.leave();resetTouchFeedback();
 }
 stage.addEventListener('pointerdown',e=>{
-  if(!scene||e.target.closest('button')||e.button!==0||e.isPrimary===false||pointerId!==null)return;
+  if(!scene||e.target.closest('button')||e.isPrimary===false||pointerId!==null)return;
+  if(e.pointerType!=='touch'&&e.button!==0)return;
   clearKeys();scene.leave();pointerId=e.pointerId;
-  stage.setPointerCapture(e.pointerId);stage.focus({preventScroll:true});
   const p=pointerPosition(e);scene.press(p.x,p.y,pointerPressure(e));e.preventDefault();
+  try{stage.setPointerCapture?.(e.pointerId);}catch{}
+  if(e.pointerType!=='touch')stage.focus?.({preventScroll:true});
 });
 stage.addEventListener('pointermove',e=>{
   if(!scene||key||e.target.closest('button'))return;
@@ -123,6 +127,7 @@ stage.addEventListener('pointermove',e=>{
 });
 function endPointer(e){if(e.pointerId===pointerId){pointerId=null;scene?.leave();}}
 stage.addEventListener('pointerup',endPointer);stage.addEventListener('pointercancel',endPointer);stage.addEventListener('lostpointercapture',endPointer);
+window.addEventListener('pointerup',endPointer);window.addEventListener('pointercancel',endPointer);
 stage.addEventListener('pointerleave',()=>{if(pointerId===null&&!key)scene?.leave();});
 function keyGesture(event){return {' ':'back',Enter:'back',h:'head',e:'ear',j:'chin',n:'nose',p:'paw',c:'chest',s:'side',t:'tail'}[event.key==='Enter'?'Enter':event.key.toLowerCase()];}
 function startKey(next){
