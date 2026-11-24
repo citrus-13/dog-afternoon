@@ -171,6 +171,13 @@ export class DogScene{
   setImage(img,id){
     this.image=img;
     if(id){this.tail=tailRoot[id]??tailRoot.sheepdog;this.face=face[id]??face.sheepdog;this.rig=dogRig[id]??dogRig.sheepdog;}
+    const [noseX,noseY,noseWidth,noseHeight]=this.rig.touch.nose;
+    const [chinX,chinY]=this.face.chin;
+    this.muzzle=[
+      (noseX+chinX)*.5,(noseY+chinY)*.5,
+      Math.max(.04,Math.abs(noseX-chinX)*.5+noseWidth),
+      Math.max(.04,Math.abs(noseY-chinY)*.5+noseHeight)
+    ];
     const sample=document.createElement('canvas');sample.width=200;sample.height=100;const ctx=sample.getContext('2d',{willReadFrequently:true});ctx.drawImage(img,0,0,200,100);this.alpha=ctx.getImageData(0,0,200,100).data;
     this.coatLeft=1;this.tailEdge=0;
     for(let i=3;i<this.alpha.length;i+=4){
@@ -470,13 +477,18 @@ export class DogScene{
     dy+=ribcage*(v-.47)*pose.breath;
 
     const headAngle=pose.headTurn+pose.chin*.052+pose.sniff*.008;
-    if(Math.abs(headAngle)+Math.abs(pose.headLift)+pose.sniff>.001&&u<.58){
+    const movingHead=Math.abs(headAngle)+Math.abs(pose.headLift)+pose.sniff>.001&&u<.58;
+    const movingPaws=pose.paw+pose.stretch>.001&&u<.46;
+    // The muzzle moves with the head even where its fur borders a front paw.
+    const muzzle=movingHead||movingPaws?1-smooth(1.18,3.8,regionRadius(u,v,this.muzzle)):0;
+    if(movingHead){
       const neckX=Math.max(headX,chinX,nose[0])+.092;
       let skull=(1-smooth(neckX-.05,neckX+.10,u))*(1-smooth(chinY+.012,chinY+.125,v));
       for(const [px,py,rx,ry] of paws){
         const pawRadius=((u-px)/(rx*.92))**2+((v-py)/(ry*.96))**2;
         skull*=smooth(.34,5.1,pawRadius);
       }
+      skull+=muzzle*(1-skull);
       const [hx,hy]=turn(u,v,neckX,headY*.40+nose[1]*.60,headAngle,aspect);
       dx+=skull*(hx-pose.sniff*.0025);
       dy+=skull*(hy-pose.headLift);
@@ -490,15 +502,17 @@ export class DogScene{
       dx+=weight*exShift;
       dy+=weight*eyShift;
     }
-    if(pose.paw+pose.stretch>.001&&u<.46){
+    if(movingPaws){
+      const reach=pose.stretch*(1-muzzle);
+      const recoil=1-muzzle*.86;
       for(let index=0;index<paws.length;index++){
         const area=paws[index],strength=index===0?pose.pawA:pose.pawB;
         const [px,py,rx]=area;
         let weight=jointWeight(u,v,area);
         if(paws.length>1)weight*=smooth(.55,2.1,regionRadius(u,v,paws[1-index]));
         const [pxShift,pyShift]=turn(u,v,px+rx*.74,py,-strength*.042,aspect);
-        dx+=weight*(pxShift+strength*.009-pose.stretch*.006);
-        dy+=weight*(pyShift-strength*.009+pose.stretch*.005);
+        dx+=weight*((pxShift+strength*.009)*recoil-reach*.006);
+        dy+=weight*((pyShift-strength*.009)*recoil+reach*.005);
       }
     }
     if(pose.chest>.001){
