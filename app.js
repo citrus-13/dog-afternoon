@@ -1,4 +1,4 @@
-import {DogScene} from './scene.js?v=bernese-13';
+import {DogScene} from './scene.js?v=body-touch-14';
 import {DogSound} from './sound.js?v=bernese-13';
 import {bindCare} from './care-ui.js?v=rana-bichon-5';
 import {bindHaptics} from './haptics.js?v=bernese-13';
@@ -50,6 +50,7 @@ function showTouchFeedback(visible){
 function resetTouchFeedback(){feedbackKey='';feedbackUntil=0;showTouchFeedback(false);}
 function touchCaption(zone,behavior){
   const responses=touchResponses[zone];
+  if(behavior==='nuzzle')return touchLabels[zone]+' · 伸了伸脖子，往手边蹭';
   if(behavior==='touch')return touchLabels[zone]+' · 轻触了一下';
   if(behavior==='brush')return touchLabels[zone]+' · 顺着手轻轻动';
   if(!Object.hasOwn(responses,behavior))return touchLabels[zone];

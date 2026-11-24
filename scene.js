@@ -42,6 +42,7 @@ function turn(u,v,x,y,angle,aspect){
 // Keep nutrition-driven proportions in the torso so the face and paws retain
 // their shape even when a dog's body condition changes.
 const torso=(u)=>smooth(.34,.52,u)*(1-smooth(.73,.93,u));
+const canvasCols=36,canvasRows=18;
 const propDuration={treat:1.90,meal:2.80,ball:2.55};
 const vertexShader=`attribute vec2 aPosition;attribute vec2 aUV;varying mediump vec2 vUV;void main(){vUV=aUV;gl_Position=vec4(aPosition,0.,1.);}`;
 const fragmentShader=`
@@ -157,8 +158,8 @@ export class DogScene{
     this.layout();
   }
   layout(){
-    const furExtent=Math.max(.50-this.coatLeft,this.tailEdge-.50,.10);
-    const scale=Math.min(.91*this.size,.486/furExtent);
+    // Keep room at full growth for the muzzle to reach toward a rubbing hand.
+    const scale=Math.min(.91*this.size,.466/Math.max(.50-this.coatLeft,.10),.486/Math.max(this.tailEdge-.50,.10));
     const w=this.width*scale,h=w*(this.image?this.image.height/this.image.width:.5);
     this.bounds={x:(this.width-w)/2,y:this.height*.52-h*.5,w,h};
     const handWidth=clamp(this.width*.235,68,220);
@@ -183,11 +184,24 @@ export class DogScene{
     ];
     const sample=document.createElement('canvas');sample.width=200;sample.height=100;const ctx=sample.getContext('2d',{willReadFrequently:true});ctx.drawImage(img,0,0,200,100);this.alpha=ctx.getImageData(0,0,200,100).data;
     this.coatLeft=1;this.tailEdge=0;
+    if(!this.gl)this.canvasTiles=new Uint8Array(canvasCols*canvasRows);
     for(let i=3;i<this.alpha.length;i+=4){
+      const pixel=(i-3)/4,column=pixel%200;
+      if(!this.gl&&this.alpha[i]>0){
+        const x=Math.floor(column/200*canvasCols),y=Math.floor(Math.floor(pixel/200)/100*canvasRows);
+        this.canvasTiles[y*canvasCols+x]=1;
+      }
       if(this.alpha[i]<=48)continue;
-      const column=(i-3)/4%200;
       this.coatLeft=Math.min(this.coatLeft,column/200);
       this.tailEdge=Math.max(this.tailEdge,(column+1)/200);
+    }
+    if(!this.gl){
+      const occupied=this.canvasTiles.slice();
+      for(let y=0;y<canvasRows;y++)for(let x=0;x<canvasCols;x++){
+        if(!occupied[y*canvasCols+x])continue;
+        for(let row=Math.max(0,y-1);row<=Math.min(canvasRows-1,y+1);row++)
+          this.canvasTiles.fill(1,row*canvasCols+Math.max(0,x-1),row*canvasCols+Math.min(canvasCols,x+2));
+      }
     }
     this.layout();
     if(this.gl){
@@ -224,6 +238,17 @@ export class DogScene{
     this.furTouch=null;
     this.headTouch=null;
     this.faceHand=0;
+    this.shoulderShift=0;
+    this.shoulderRise=0;
+    this.neckPitch=0;
+    this.contactLean=0;
+    this.rubDirection=null;
+    this.rubAnchor=null;
+    this.rubTurns=0;
+    this.lastRub=-Infinity;
+    this.nuzzleStart=-Infinity;
+    this.nuzzleZone='idle';
+    this.nuzzleSide=0;
     this.inputPressure=undefined;
     this.contactForce=0;
     this.pressAge=0;
@@ -281,7 +306,7 @@ export class DogScene{
     const horizontal=zone==='tail'?0:part?Math.min(.025,part[2]*.36):zone==='back'?.128:.028;
     const vertical=zone==='tail'?0:part?Math.min(.017,part[3]*.30):.015;
     const u=centerU+Math.sin(phase*4.1)*horizontal,v=centerV+Math.sin(phase*3.1)*vertical;
-    if(!this.gl||!this.pose)return this.stageCoords(u,v);
+    if(!this.pose)return this.stageCoords(u,v);
     const point=this.deform(u,v,this.pose);
     return {x:point.x/this.width,y:point.y/this.height};
   }
@@ -314,7 +339,7 @@ export class DogScene{
   }
   contactCoords(x,y){
     const point=this.textureCoords(x,y);
-    if(!this.gl||!this.pose)return point;
+    if(!this.pose)return point;
     // Invert the small mesh deflections so a paw or tail remains touchable
     // where it is painted, including while it is moving away from its rest pose.
     const {w,h}=this.bounds,px=x*this.width,py=y*this.height;
@@ -379,6 +404,10 @@ export class DogScene{
     if(zone!=='tail'&&previousZone==='tail')this.tailTravel=0;
     if(zone!==this.zone){this.stillTime=0;this.pressAge=0;}
     this.zone=zone;
+    if(!this.pressed||zone!==previousZone||!this.contact){
+      this.rubAnchor=null;this.rubDirection=null;this.rubTurns=0;
+    }
+    if(this.contact&&this.pressed&&(zone==='ear'||zone==='chin'||zone==='chest'))this.trackRub(at,zone);
     const [noseX,noseY]=this.rig.touch.nose;
     this.nearNose=!this.contact&&u<noseX+.055&&v>.28&&v<.95&&
       Math.hypot(u-noseX,(v-noseY)*.5)<.167;
@@ -411,6 +440,26 @@ export class DogScene{
     this.motionPending+=moved;
     this.travelThisFrame+=moved;
   }
+  trackRub(at,zone){
+    const now=this.motion.time;
+    if(!this.rubAnchor||now-this.lastRub>.60){
+      this.rubAnchor=at;this.rubDirection=null;this.rubTurns=0;this.lastRub=now;
+      return;
+    }
+    const dx=at.u-this.rubAnchor.u,dy=(at.v-this.rubAnchor.v)*this.bounds.h/this.bounds.w;
+    const travel=Math.hypot(dx,dy);
+    if(travel<.009)return;
+    const direction={x:dx/travel,y:dy/travel};
+    if(this.rubDirection&&direction.x*this.rubDirection.x+direction.y*this.rubDirection.y<-.35){
+      this.rubTurns++;
+      if(this.rubTurns>=2&&!this.action&&now-this.nuzzleStart>2.0){
+        this.nuzzleStart=now;this.nuzzleZone=zone;this.rubTurns=0;
+        this.nuzzleSide=zone==='ear'?(this.earIndex?this.rig.secondEar:this.rig.ear)[4]
+          :clamp((at.u-this.face.head[0])/.10,-1,1);
+      }
+    }
+    this.rubDirection=direction;this.rubAnchor=at;this.lastRub=now;
+  }
   press(x,y,force,tailOverride=0){
     this.pressed=true;
     this.inputPressure=Number.isFinite(force)?clamp(force):undefined;
@@ -438,6 +487,7 @@ export class DogScene{
       this.tailReleaseTime=.30;
       this.tailTap=0;
     }
+    this.rubAnchor=null;this.rubDirection=null;this.rubTurns=0;
     this.contact=false;this.speed=0;this.zone='idle';this.pressed=false;
     this.stillTime=0;this.strokeTime=0;this.motionPending=0;this.travelThisFrame=0;
     this.contactTexture=null;this.inputPressure=undefined;this.pressAge=0;this.nearNose=false;
@@ -486,6 +536,20 @@ export class DogScene{
     const ribcage=smooth(.27,.48,u)*(1-smooth(.66,.84,u));
     dy+=ribcage*(v-.47)*pose.breath;
 
+    // Weight transfers through the shoulder, with the rear and planted feet
+    // carrying the load. Carry the whole upper silhouette through the shift.
+    const planted=1-smooth(Math.max(.56,chinY-.015),Math.max(.86,chinY+.17),v);
+    const shoulder=(1-smooth(.38,.90,u))*(.15+.85*planted);
+    dx+=shoulder*pose.shoulderShift;
+    dy-=shoulder*pose.shoulderRise;
+    // Spread the neck tilt over the shoulder. Rotating the muzzle alone can
+    // pinch the cheek of profile dogs that rest their face on a front paw.
+    if(Math.abs(pose.neckPitch)>.0001){
+      const pivotX=Math.max(headX,chinX,nose[0])+.092;
+      const [pitchX,pitchY]=turn(u,v,pivotX,(headY+nose[1])*.5,pose.neckPitch,aspect);
+      dx+=shoulder*pitchX;
+      dy+=shoulder*pitchY;
+    }
     const headAngle=pose.headTurn+pose.chin*.073+pose.sniff*.015;
     const movingHead=Math.abs(headAngle)+Math.abs(pose.headLift)+pose.sniff>.001&&u<.58;
     const movingPaws=pose.paw+pose.stretch>.001&&u<.46;
@@ -548,6 +612,10 @@ export class DogScene{
       const distance=(u-pose.pressX)**2*1.8+(v-pose.pressY)**2*.65;
       dy+=Math.exp(-distance*168)*pose.furPress*.018;
     }
+    if(pose.coatDepth>.001){
+      const radius=((u-pose.touchX)/.085)**2+((v-pose.touchY)/.14)**2;
+      dy+=Math.exp(-radius)*pose.coatDepth*.020;
+    }
     if(pose.back>.001){
       const nearby=((u-pose.touchX-.030)/.17)**2+((v-pose.touchY)/.15)**2;
       dy+=Math.exp(-nearby)*pose.back*.0045;
@@ -580,6 +648,37 @@ export class DogScene{
       }
     }
     return {x:x+w*(u+dx),y:y+h*(v+dy)};
+  }
+  followTouch(dt,zone,cue,force){
+    const approach=(from,to,rise,fall)=>from+(to-from)*-Math.expm1(-dt/(Math.abs(to)>Math.abs(from)?rise:fall));
+    const touching=this.contact&&!this.action;
+    const depth=touching?force:0;
+    const pace=touching&&this.strokeTime>0?smooth(.10,1.6,this.brushPace):0;
+    const ear=this.earIndex&&this.rig.secondEar?this.rig.secondEar:this.rig.ear;
+    // Local reflex first, then a slower transfer of weight. A still palm
+    // and a moving hand therefore produce different poses on the same spot.
+    const forehead=zone==='head'&&touching?depth:0;
+    const back=cue.back;
+    const backPress=zone==='back'?Math.max(depth,this.pat*.80):0;
+    if(zone==='side'&&touching){
+      const relative=(this.contactTexture.v-this.rig.touch.side[1])/this.rig.touch.side[3];
+      this.contactLean=approach(this.contactLean,clamp(relative,-1,1),.12,.16);
+    }
+    // Two reversals of the fingertip invite one neck stretch toward the hand.
+    // Ignore tiny sensor jitter and let the dog finish the gesture between rubs.
+    if(this.action||(touching&&zone!==this.nuzzleZone))this.nuzzleStart=-Infinity;
+    const age=this.motion.time-this.nuzzleStart;
+    const nuzzle=smooth(0,.32,age)*(1-smooth(.48,1.18,age));
+    const slide=nuzzle*this.nuzzleSide*.022+cue.side*(.013+.007*pace)+cue.sniff*.009+cue.paw*.011
+      -cue.chin*.014-ear[4]*cue.earFold*.011-forehead*.009;
+    const rise=nuzzle*.033+cue.chin*.021+cue.chest*.024+back*(.025+.012*pace)
+      -backPress*.020*(1-back)-forehead*.026-cue.paw*.014-cue.side*this.contactLean*.023;
+    const pitch=nuzzle*(.048+this.nuzzleSide*.028)+forehead*(-.042+.018*pace)+ear[4]*(cue.ear*.065+cue.earFold*.055)
+      +back*.036-cue.paw*.024;
+    this.shoulderShift=approach(this.shoulderShift,slide,.13,.36);
+    this.shoulderRise=approach(this.shoulderRise,rise,.16,.42);
+    this.neckPitch=approach(this.neckPitch,pitch,.085,.30);
+    return nuzzle;
   }
   frame(now){
     if(!this.ready)return;
@@ -696,8 +795,11 @@ export class DogScene{
     this.relax=approach(this.relax,resting?1:0,3);
     const careEnd=this.action?propDuration[this.action.kind]:0;
     const careWeight=this.action?smooth(0,.21,this.action.time)*(1-smooth(careEnd-.30,careEnd,this.action.time)):0;
+    const nuzzle=this.followTouch(dt,zone,cue,forceTarget);
     const pose={
+      shoulderShift:this.shoulderShift*motion,shoulderRise:this.shoulderRise*motion,neckPitch:this.neckPitch*motion,
       touchX,touchY,pressX,pressY,
+      coatDepth:['chest','side','back'].includes(surfaceZone)?pressure*motion:0,
       careWeight:careWeight*motion,
       headLift:this.headResponse*motion,
       headTurn:this.headTurn*motion,
@@ -736,15 +838,7 @@ export class DogScene{
       gl.drawElements(gl.TRIANGLES,this.indexCount,gl.UNSIGNED_SHORT,0);
     }else{
       const ctx=this.ctx,dpr=this.canvas.width/this.width;ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,this.width,this.height);
-      // Vertical strips can show breathing and torso depth without carrying a
-      // paw or muzzle movement through the full height of the dog.
-      const strips=64,sw=this.image.width/strips;
-      for(let x=0;x<strips;x++){
-        const u=x/strips;
-        const depth=torso(u)*(this.thickness-1)+smooth(.27,.48,u)*(1-smooth(.66,.84,u))*pose.breath;
-        ctx.drawImage(this.image,x*sw,0,Math.min(sw+1,this.image.width-x*sw),this.image.height,
-          b.x+b.w*u,b.y-b.h*.47*depth,b.w/strips+1,b.h*(1+depth));
-      }
+      this.drawCanvasPose(ctx,pose,dpr);
       if(coatActive)this.drawBrushedCoat(ctx,coat);
       if(pressure>.012||this.furPress>.012)this.drawContactShadow(ctx,touchX,touchY,pressure,pressX,pressY);
     }
@@ -758,21 +852,57 @@ export class DogScene{
     if(this.stage.dataset.touchPaw!==pawFeedback)this.stage.dataset.touchPaw=pawFeedback;
     const localFeedback=feedback==='idle'?'idle':this.strokeTime>0&&coatActive?'brush':contactInk>.10?'touch':'idle';
     const behavior=this.action?cue.behavior
+      :motion&&feedback===this.nuzzleZone&&nuzzle>.42?'nuzzle'
       :motion&&this.gl&&headContact&&cue.blink>.60?'head-soften'
       :feedback==='head'&&this.furPress>.15?'fur-press'
-      :!motion||!this.gl?localFeedback
+      :!motion?localFeedback
       :feedback==='tail'&&pose.tailCurl>.16&&pose.tailCurl>pose.tailStraight?'tail-curl'
       :feedback==='tail'&&pose.tailStraight>.15&&tailDirection>.055?'tail-straight'
       :feedback==='ear'&&pose.earFold>.25&&Math.abs(pose.ear)<.12?'ear-fold'
-      :cue.behavior==='watch'||cue.behavior==='idle'?localFeedback:cue.behavior;
+      :(!this.gl&&cue.behavior==='blink')||cue.behavior==='watch'||cue.behavior==='idle'?localFeedback:cue.behavior;
     if(this.stage.dataset.behavior!==behavior)this.stage.dataset.behavior=behavior;
+  }
+  drawCanvasPose(ctx,pose,dpr){
+    // At rest only the ribcage moves. A single strip per column gives the
+    // same vertical breathing transform without drawing the joint mesh.
+    const activity=Math.abs(pose.shoulderShift)+Math.abs(pose.shoulderRise)+Math.abs(pose.neckPitch)
+      +Math.abs(pose.headLift)+Math.abs(pose.headTurn)+Math.abs(pose.ear)+pose.earFold+pose.chin
+      +pose.sniff+pose.paw+pose.stretch+pose.side+pose.chest+pose.back+pose.furPress+pose.coatDepth
+      +Math.abs(pose.wag)+pose.tailStraight+pose.tailCurl;
+    if(activity<.0005){
+      const b=this.bounds,sw=this.image.width/64;
+      for(let i=0;i<64;i++){
+        const u=i/64,depth=torso(u)*(this.thickness-1)+smooth(.27,.48,u)*(1-smooth(.66,.84,u))*pose.breath;
+        ctx.drawImage(this.image,i*sw,0,Math.min(sw+1,this.image.width-i*sw),this.image.height,
+          b.x+b.w*u,b.y-b.h*.47*depth,b.w/64+1,b.h*(1+depth));
+      }
+      return;
+    }
+    // Each patch follows the same joints used for picking and WebGL. One
+    // device pixel of overlap keeps adjacent patch edges joined on rotation.
+    const cols=canvasCols,rows=canvasRows,stride=cols+1,sw=this.image.width/cols,sh=this.image.height/rows;
+    const points=this.canvasMesh??=new Array(stride*(rows+1));
+    for(let y=0;y<=rows;y++)for(let x=0;x<=cols;x++)
+      points[y*stride+x]=this.deform(x/cols,y/rows,pose);
+    for(let y=0;y<rows;y++)for(let x=0;x<cols;x++){
+      if(!this.canvasTiles[y*cols+x])continue;
+      const index=y*stride+x,a=points[index],b=points[index+1],c=points[index+stride],d=points[index+stride+1];
+      const ax=(b.x-a.x+d.x-c.x)/2,ay=(b.y-a.y+d.y-c.y)/2;
+      const bx=(c.x-a.x+d.x-b.x)/2,by=(c.y-a.y+d.y-b.y)/2;
+      const left=(a.x+b.x+c.x+d.x)/4-(ax+bx)/2,top=(a.y+b.y+c.y+d.y)/4-(ay+by)/2;
+      ctx.setTransform(ax*dpr,ay*dpr,bx*dpr,by*dpr,left*dpr,top*dpr);
+      const overlapX=x+1<cols?Math.min(.12,1/(Math.hypot(ax,ay)*dpr)):0;
+      const overlapY=y+1<rows?Math.min(.12,1/(Math.hypot(bx,by)*dpr)):0;
+      ctx.drawImage(this.image,x*sw,y*sh,sw*(1+overlapX),sh*(1+overlapY),0,0,1+overlapX,1+overlapY);
+    }
+    ctx.setTransform(dpr,0,0,dpr,0,0);
   }
   drawContactShadow(ctx,touchX,touchY,pressure,pressX,pressY){
     ctx.save();
     ctx.globalCompositeOperation='source-atop';
     for(const [u,v,strength] of [[touchX,touchY,pressure*.26],[pressX,pressY,this.furPress*.22]]){
       if(strength<.01)continue;
-      const p=this.stageCoords(u,v),x=p.x*this.width,y=p.y*this.height,radius=this.bounds.w*.056;
+      const {x,y}=this.deform(u,v,this.pose),radius=this.bounds.w*.056;
       const shadow=ctx.createRadialGradient(x,y,0,x,y,radius);
       shadow.addColorStop(0,`rgba(38,26,20,${strength})`);
       shadow.addColorStop(1,'rgba(38,26,20,0)');
@@ -788,7 +918,7 @@ export class DogScene{
     for(let i=0;i<coat.length;i+=4){
       const dx=coat[i+2],dy=coat[i+3],strength=Math.hypot(dx,dy);
       if(strength<.012)continue;
-      const p=this.stageCoords(coat[i],coat[i+1]),x=p.x*this.width,y=p.y*this.height;
+      const {x,y}=this.deform(coat[i],coat[i+1],this.pose);
       const gradient=ctx.createRadialGradient(x,y,0,x,y,radius);
       const color=dx+dy*.24<0?'255,247,230':'39,30,24';
       gradient.addColorStop(0,`rgba(${color},${.057*strength})`);
