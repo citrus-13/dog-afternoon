@@ -1,5 +1,6 @@
-import {DogMotion} from './motion.js?v=location-touch-6';
+import {DogMotion} from './motion.js?v=soft-touch-7';
 import {dogRig} from './motion-rig.js?v=location-touch-6';
+import {CoatTrail,coatTrailGLSL} from './coat-trail.js?v=soft-touch-7';
 
 const clamp=(n,a=0,b=1)=>Math.max(a,Math.min(b,n));
 const smooth=(a,b,t)=>{const p=clamp((t-a)/(b-a));return p*p*(3-2*p);};
@@ -24,6 +25,7 @@ const face={
 };
 const back=[.58,.40];
 const pointZones=['nose','paw','tail','ear','chest','side'];
+const coatZones=new Set(['head','ear','chin','chest','side','back','tail']);
 const regionRadius=(u,v,[cx,cy,rx,ry])=>((u-cx)/rx)**2+((v-cy)/ry)**2;
 const regionWeight=(u,v,region,falloff=.68)=>Math.exp(-regionRadius(u,v,region)*falloff);
 // Keep nutrition-driven proportions in the torso so the face and paws retain
@@ -47,6 +49,7 @@ uniform vec4 uEyeB;
 uniform vec4 uEyeAxes;
 uniform float uBlink;
 varying mediump vec2 vUV;
+${coatTrailGLSL}
 
 // Compress the real eye texture into a thin line while leaving the surrounding
 // fur anchored. Rotation is measured on the original 2:1 image.
@@ -70,12 +73,15 @@ void main(){
   vec2 offset=(vUV-uTouch)*vec2(1.,.60);
   float contact=uContact*exp(-dot(offset,offset)*175.);
   float press=uFurPress*exp(-dot(offset,offset)*280.);
-  vec2 brushedUV=coatUV-uDirection*contact*.0019-vec2(0.,press*.0048);
+  vec3 trail=coatTrail(vUV);
+  vec2 brushedUV=coatUV-uDirection*contact*.0019-vec2(0.,press*.0048)-trail.xy*.007;
   vec4 brushed=texture2D(uImage,brushedUV);
   float inside=smoothstep(.85,.99,min(coat.a,brushed.a));
   vec3 fur=mix(coat.rgb,brushed.rgb,inside);
   float rim=press*smoothstep(-.055,.055,-offset.y);
-  gl_FragColor=vec4(fur*(1.-contact*.055-press*.040-rim*.035),coat.a);
+  vec2 grain=normalize(vec2(1.,mix(.37,.16,smoothstep(.34,.57,vUV.x))));
+  float lay=inside*(dot(trail.xy,grain)*-.036-trail.z*.012);
+  gl_FragColor=vec4(fur*(1.-contact*.055-press*.040-rim*.035+lay),coat.a);
 }`;
 
 export class DogScene{
@@ -123,7 +129,7 @@ export class DogScene{
     this.indexBuffer=gl.createBuffer();gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,this.indexBuffer);gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint16Array(indices),gl.STATIC_DRAW);this.indexCount=indices.length;
     this.texture=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,this.texture);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
     this.uniforms=Object.fromEntries(
-      ['uTouch','uDirection','uContact','uFurPress','uImage','uEyeA','uEyeB','uEyeAxes','uBlink']
+      ['uTouch','uDirection','uContact','uFurPress','uImage','uEyeA','uEyeB','uEyeAxes','uBlink','uCoatTrail[0]','uCoatTrailActive']
         .map(name=>[name,gl.getUniformLocation(program,name)])
     );
     gl.uniform1i(this.uniforms.uImage,0);gl.clearColor(0,0,0,0);gl.disable(gl.BLEND);
@@ -198,6 +204,14 @@ export class DogScene{
   }
   resetInteraction(){
     this.motion=new DogMotion();
+    this.coatTrail=new CoatTrail();
+    this.contactTexture=null;
+    this.inputPressure=undefined;
+    this.contactForce=0;
+    this.pressAge=0;
+    this.nearNose=false;
+    this.noseDwell=0;
+    this.noseLook=0;
     this.zone='idle';
     this.pressed=false;
     this.stillTime=0;
@@ -212,12 +226,16 @@ export class DogScene{
     this.headTap=0;
     this.tailTap=0;
     this.furPress=0;
+    this.furVelocity=0;
     this.tailStraight=0;
-    this.pawTarget=this.rig.paws[0];
+    this.pawIndex=0;
+    this.feedbackPaw=0;
     this.feedbackZone='idle';
     this.feedbackTime=0;
     this.pose=null;
     this.stage.dataset.touchZone='idle';
+    this.stage.dataset.touchPaw='';
+    this.stage.dataset.coatBrushed='false';
     if(this.prop)this.prop.dataset.visible='false';
   }
   textureCoords(x,y){
@@ -256,7 +274,7 @@ export class DogScene{
       }
     }
     if(best){
-      if(best.zone==='paw')this.pawTarget=best.area;
+      if(best.zone==='paw')this.pawIndex=this.rig.paws.indexOf(best.area);
       return best.zone;
     }
     const {head:[hx,hy],chin:[cx,cy]}=this.face;
@@ -280,19 +298,34 @@ export class DogScene{
     }
     return point;
   }
-  point(x,y){
+  point(x,y,force){
     if(!this.ready||!this.bounds)return;
     const previous=this.target;
     const wasContact=this.contact;
+    const previousCoat=this.contactTexture;
+    const previousZone=this.zone;
     const distance=Math.hypot(x-previous.x,(y-previous.y)*this.height/this.width);
     this.target={x,y};
-    const {u,v}=this.contactCoords(x,y);
+    const at=this.contactCoords(x,y);
+    const {u,v}=at;
+    if(this.pressed&&Number.isFinite(force))this.inputPressure=clamp(force);
     this.contact=this.hit(u,v);
     const zone=this.contact?this.touchZone(u,v):'idle';
-    if(zone!==this.zone)this.stillTime=0;
+    if(zone!==this.zone){this.stillTime=0;this.pressAge=0;}
     this.zone=zone;
-    if(!this.contact){this.motionPending=0;this.travelThisFrame=0;this.strokeTime=0;return;}
+    const [noseX,noseY]=this.rig.touch.nose;
+    this.nearNose=!this.contact&&u<noseX+.055&&v>.28&&v<.95&&
+      Math.hypot(u-noseX,(v-noseY)*.5)<.167;
+    if(!this.contact){
+      this.contactTexture=null;this.motionPending=0;this.travelThisFrame=0;this.strokeTime=0;
+      return;
+    }
     this.petTarget=this.target;
+    this.contactTexture=at;
+    if(previousCoat&&coatZones.has(previousZone)&&coatZones.has(zone)&&!this.action&&!this.reduce.matches&&
+      this.hit((previousCoat.u+u)*.5,(previousCoat.v+v)*.5)){
+      this.coatTrail.trace(previousCoat,at,this.pressed ? this.inputPressure??.65 : .38);
+    }
     if(!wasContact){
       if(this.handAlpha<.15){
         this.handPosition={...this.petTarget};
@@ -310,14 +343,16 @@ export class DogScene{
     const paceWeight=1-.50*smooth(1.25,2.9,this.brushPace);
     this.accumulateTouch(Math.min(moved,.12)*(zone==='back'?1:.55)*paceWeight);
   }
-  press(x,y){
-    this.point(x,y);
-    if(!this.contact)return;
+  press(x,y,force){
     this.pressed=true;
+    this.inputPressure=Number.isFinite(force)?clamp(force):undefined;
+    this.point(x,y,force);
+    if(!this.contact)return;
     this.stillTime=0;
+    this.pressAge=0;
     this.pat=1;
-    this.pendingTap=this.zone;
-    if(this.zone==='head')this.headTap=.30;
+    this.pendingTap={zone:this.zone,paw:this.pawIndex};
+    if(this.zone==='head')this.headTap=.32;
     if(this.zone==='tail')this.tailTap=.43;
     this.accumulateTouch(.065);
   }
@@ -328,6 +363,7 @@ export class DogScene{
   leave(){
     this.contact=false;this.speed=0;this.zone='idle';this.pressed=false;
     this.stillTime=0;this.strokeTime=0;this.motionPending=0;this.travelThisFrame=0;
+    this.contactTexture=null;this.inputPressure=undefined;this.pressAge=0;this.nearNose=false;
   }
   takeCareTime(){
     const seconds=this.careTime;
@@ -391,7 +427,17 @@ export class DogScene{
     }
     const stretch=pose.stretch;
     const nose=pose.sniff>.001?pose.sniff*regionWeight(u,v,this.rig.touch.nose):0;
-    const recoil=pose.paw>.001?pose.paw*regionWeight(u,v,this.pawTarget,.43):0;
+    let recoil=0,toes=0;
+    if(pose.paw>.001){
+      for(let index=0;index<this.rig.paws.length;index++){
+        const strength=index===0?pose.pawA:pose.pawB;
+        if(!(strength>.001))continue;
+        const region=this.rig.paws[index];
+        const local=strength*regionWeight(u,v,region,.43);
+        recoil=Math.max(recoil,local);
+        toes=Math.max(toes,local*(1-smooth(-.70,.12,(u-region[0])/region[2])));
+      }
+    }
     const softChest=pose.chest>.001?pose.chest*regionWeight(u,v,this.rig.touch.chest):0;
     const lean=pose.side>.001?pose.side*regionWeight(u,v,this.rig.touch.side):0;
     const headFur=pose.furPress>.001?Math.exp(-distance*154)*pose.furPress:0;
@@ -410,11 +456,11 @@ export class DogScene{
     return {
       x:x+w*(u+underHand*pose.shearX-head*(v-.45)*pose.headTurn*.52
         -tail*(v-this.tail.y)*pose.wag*.034-stretch*(paw*.034+shoulder*.011)+ear*.012*earDirection
-        -nose*.019+recoil*.042-softChest*.010+lean*.009+tailOut),
+        -nose*.019+recoil*.036+toes*.008-softChest*.010+lean*.009+tailOut),
       y:y+h*(v+bodyShape+underHand*pose.shearY+chest*(v-.47)*pose.breath
         +head*((u-pivot)*pose.headTurn*1.5-pose.headLift)
         +tail*pose.wag*.063+stretch*(paw*.026-shoulder*.026)-ear*.022
-        +headFur*.049-nose*.012-recoil*.035-softChest*.040+lean*.054+tailAlign)
+        +headFur*.049-nose*.012-recoil*.028-toes*.012-softChest*.040+lean*.054+tailAlign)
     };
   }
   frame(now){
@@ -433,7 +479,7 @@ export class DogScene{
     const gentle=smooth(.10,.32,this.brushPace)*(1-smooth(1.10,2.35,this.brushPace));
     const comfortGain=strokingBack?Math.min(traveled,.065)*gentle*2:0;
     this.comfort=clamp(this.comfort+comfortGain-dt*(strokingBack?.11:.30));
-    if(this.contact&&this.pressed)this.stillTime+=dt;
+    if(this.contact&&this.pressed){this.stillTime+=dt;this.pressAge+=dt;}
     const resting=this.contact&&this.pressed&&this.zone!=='chin'&&this.zone!=='tail'&&
       this.zone!=='nose'&&this.zone!=='paw'&&this.stillTime>1.12;
     if(!this.action&&this.contact&&(this.strokeTime>0||(resting&&this.stillTime<6)))this.careTime+=dt;
@@ -449,17 +495,30 @@ export class DogScene{
     }
     const tapped=this.pendingTap;
     this.pendingTap=null;
-    const zone=tapped??this.zone;
+    const zone=tapped?.zone??this.zone;
+    const pawIndex=tapped?.paw??this.pawIndex;
+    this.noseDwell=this.nearNose&&!this.action?this.noseDwell+dt:0;
     const cue=this.motion.step(dt,{zone,contact:this.contact,resting,action:this.action,bond:this.bond,
-      comfort:this.comfort,rubbing:this.strokeTime>0,tapped:Boolean(tapped)});
+      comfort:this.comfort,rubbing:this.strokeTime>0,tapped:Boolean(tapped),pawIndex,sniffHand:this.noseDwell>.28});
     this.headTap=Math.max(0,this.headTap-dt);
     this.tailTap=Math.max(0,this.tailTap-dt);
     const headContact=this.contact&&this.zone==='head';
     const tailContact=this.contact&&this.zone==='tail';
-    const furTarget=headContact?(this.pressed?.94:.38):this.headTap*2.7;
+    const heldDepth=this.inputPressure===undefined ? .41+.51*smooth(.045,.54,this.pressAge)
+      : .29+.70*smooth(0,1,this.inputPressure);
+    const forceTarget=!this.contact ? 0 : this.pressed ? heldDepth : .27;
+    this.contactForce=approach(this.contactForce,forceTarget,19);
+    const furTarget=this.action ? 0 : headContact ? forceTarget : .43*smooth(0,.32,this.headTap);
     const tailStroke=.15*smooth(.01,.29,this.dx)-.22*smooth(.01,.33,-this.dx);
     const tailTarget=tailContact ? .52+(this.pressed ? .33 : 0)+tailStroke : this.tailTap*1.78;
-    this.furPress=approach(this.furPress,this.action?0:furTarget,furTarget>this.furPress?14:9);
+    // A critically damped return preserves the movement's momentum without
+    // making the coat bounce past its rest position.
+    const furRate=furTarget>this.furPress?18:14;
+    const offset=this.furPress-furTarget;
+    const carry=this.furVelocity+furRate*offset;
+    const decay=Math.exp(-furRate*dt);
+    this.furPress=clamp(furTarget+(offset+carry*dt)*decay);
+    this.furVelocity=(this.furVelocity-furRate*carry*dt)*decay;
     this.tailStraight=approach(this.tailStraight,this.action?0:tailTarget,tailTarget>this.tailStraight?9:5.8);
     this.pet=approach(this.pet,this.contact?1:0,this.contact?19:10);
     this.wag=approach(this.wag,Math.max(this.wagStrength,cue.tail),8);
@@ -492,9 +551,11 @@ export class DogScene{
     const chinContact=this.contact&&this.zone==='chin';
     const petLift=this.action||resting?0:headContact?.005:chinContact?.032:0;
     const followHand=petLift?clamp((touchX-this.face.head[0])*.25,-.033,.033):0;
+    const targetNoseX=(this.target.x*this.width-b.x)/b.w-this.rig.touch.nose[0];
+    this.noseLook=approach(this.noseLook,this.nearNose&&!this.action?clamp(targetNoseX*.29,-.038,.028):0,4.5);
     const lift=cue.nod*.117*(1-this.furPress*.76);
     this.headResponse=approach(this.headResponse,petLift*pressure+lift,5.8);
-    this.headTurn=approach(this.headTurn,cue.tilt*.087+followHand,5.2);
+    this.headTurn=approach(this.headTurn,cue.tilt*.087+followHand+this.noseLook,5.2);
     this.relax=approach(this.relax,resting?1:0,3);
     const pose={
       touchX,touchY,
@@ -509,6 +570,8 @@ export class DogScene{
       ear:(cue.ear??0)*motion,
       sniff:(cue.sniff??0)*motion,
       paw:(cue.paw??0)*motion,
+      pawA:(cue.pawA??0)*motion,
+      pawB:(cue.pawB??0)*motion,
       chest:(cue.chest??0)*motion,
       side:(cue.side??0)*motion,
       furPress:this.furPress*motion,
@@ -516,6 +579,9 @@ export class DogScene{
       tailReach:clamp((this.width*.990-b.x)/b.w-this.tailEdge,0,.078)
     };
     this.pose=pose;
+    const coat=this.coatTrail.update(dt);
+    const coatActive=Boolean(motion&&this.coatTrail.active);
+    if(this.stage.dataset.coatBrushed!==String(coatActive))this.stage.dataset.coatBrushed=String(coatActive);
     if(this.gl){
       const gl=this.gl;
       for(let i=0;i<this.uv.length;i+=2){const p=this.deform(this.uv[i],this.uv[i+1],pose);this.positions[i]=p.x/this.width*2-1;this.positions[i+1]=1-p.y/this.height*2;}
@@ -523,6 +589,8 @@ export class DogScene{
       gl.uniform2f(this.uniforms.uTouch,touchX,touchY);gl.uniform2f(this.uniforms.uDirection,this.dx,this.dy);gl.uniform1f(this.uniforms.uContact,Math.max(this.pet,this.pat));
       gl.uniform1f(this.uniforms.uBlink,cue.blink*motion);
       gl.uniform1f(this.uniforms.uFurPress,pose.furPress);
+      gl.uniform1f(this.uniforms.uCoatTrailActive,coatActive?1:0);
+      if(coatActive)gl.uniform4fv(this.uniforms['uCoatTrail[0]'],coat);
       gl.drawElements(gl.TRIANGLES,this.indexCount,gl.UNSIGNED_SHORT,0);
     }else{
       const ctx=this.ctx,dpr=this.canvas.width/this.width;ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,this.width,this.height);
@@ -536,16 +604,36 @@ export class DogScene{
         const stripHeight=b.h*(1+torso(u)*(this.thickness-1));
         ctx.drawImage(this.image,x*sw,0,Math.min(sw+1,this.image.width-x*sw),this.image.height,p.x,p.y-v*stripHeight,Math.max(1,next.x-p.x+1),stripHeight);
       }
+      if(coatActive)this.drawBrushedCoat(ctx,coat,pose);
     }
     this.stage.dataset.contact=String(this.contact);this.stage.dataset.wagging=String(this.wag>.1);
     this.stage.dataset.reaction=this.action?.kind??(resting?'rest':this.zone);
-    if(this.contact||tapped){this.feedbackZone=zone;this.feedbackTime=.68;}
+    if(this.contact||tapped){this.feedbackZone=zone;this.feedbackPaw=pawIndex;this.feedbackTime=.68;}
     else this.feedbackTime=Math.max(0,this.feedbackTime-dt);
     const feedback=this.feedbackTime>0&&!this.action?this.feedbackZone:'idle';
     if(this.stage.dataset.touchZone!==feedback)this.stage.dataset.touchZone=feedback;
+    const pawFeedback=feedback==='paw'?String(this.feedbackPaw+1):'';
+    if(this.stage.dataset.touchPaw!==pawFeedback)this.stage.dataset.touchPaw=pawFeedback;
     const behavior=!motion?'idle':this.action?cue.behavior:pose.tailStraight>.15?'tail-straight'
       :pose.furPress>.19?'fur-press':cue.behavior;
     if(this.stage.dataset.behavior!==behavior)this.stage.dataset.behavior=behavior;
+  }
+  drawBrushedCoat(ctx,coat,pose){
+    const radius=this.bounds.w*.070;
+    ctx.save();
+    ctx.globalCompositeOperation='source-atop';
+    for(let i=0;i<coat.length;i+=4){
+      const dx=coat[i+2],dy=coat[i+3],strength=Math.hypot(dx,dy);
+      if(strength<.012)continue;
+      const p=this.deform(coat[i],coat[i+1],pose);
+      const gradient=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,radius);
+      const color=dx+dy*.24<0?'255,247,230':'39,30,24';
+      gradient.addColorStop(0,`rgba(${color},${.057*strength})`);
+      gradient.addColorStop(1,`rgba(${color},0)`);
+      ctx.fillStyle=gradient;
+      ctx.fillRect(p.x-radius,p.y-radius,radius*2,radius*2);
+    }
+    ctx.restore();
   }
   destroy(){this.observer.disconnect();if(this.gl){const gl=this.gl;gl.deleteTexture(this.texture);gl.deleteProgram(this.program);for(const b of [this.positionBuffer,this.uvBuffer,this.indexBuffer])gl.deleteBuffer(b);}}
 }

@@ -1,5 +1,5 @@
-import {DogScene} from './scene.js?v=location-touch-6';
-import {DogSound} from './sound.js';
+import {DogScene} from './scene.js?v=soft-touch-7';
+import {DogSound} from './sound.js?v=soft-touch-7';
 import {bindCare} from './care-ui.js?v=rana-bichon-5';
 
 const $=s=>document.querySelector(s);
@@ -38,7 +38,8 @@ function resetTouchFeedback(){feedbackKey='';feedbackUntil=0;showTouchFeedback(f
 function updateTouchFeedback(now){
   const zone=stage.dataset.touchZone;
   if(!Object.hasOwn(touchLabels,zone)){resetTouchFeedback();return;}
-  const next=zone+':'+(stage.dataset.behavior||'');
+  const paw=zone==='paw'&&['1','2'].includes(stage.dataset.touchPaw)?stage.dataset.touchPaw:'';
+  const next=zone+':'+paw+':'+(stage.dataset.behavior||'');
   if(next!==feedbackKey){
     feedbackKey=next;feedbackUntil=now+2800;
     if(touchFeedback.textContent!==touchLabels[zone])touchFeedback.textContent=touchLabels[zone];
@@ -69,6 +70,14 @@ function pointerPosition(event){
   const rect=stage.getBoundingClientRect();
   return {x:(event.clientX-rect.left)/rect.width,y:(event.clientY-rect.top)/rect.height};
 }
+function pointerPressure(event){
+  const pressure=event.pressure;
+  if(!Number.isFinite(pressure)||pressure<=0||pressure>1)return undefined;
+  if(event.pointerType==='pen')return pressure;
+  // Leave the synthetic touch default to the hold-time response.
+  if(event.pointerType==='touch'&&pressure!==.5)return pressure;
+  return undefined;
+}
 function clearKeys(){heldKeys.clear();key=null;}
 function clearInput(){
   clearKeys();
@@ -80,12 +89,12 @@ stage.addEventListener('pointerdown',e=>{
   if(!scene||e.target.closest('button')||e.button!==0||e.isPrimary===false||pointerId!==null)return;
   clearKeys();scene.leave();pointerId=e.pointerId;
   stage.setPointerCapture(e.pointerId);stage.focus({preventScroll:true});
-  const p=pointerPosition(e);scene.press(p.x,p.y);e.preventDefault();
+  const p=pointerPosition(e);scene.press(p.x,p.y,pointerPressure(e));e.preventDefault();
 });
 stage.addEventListener('pointermove',e=>{
   if(!scene||key||e.target.closest('button'))return;
   if(pointerId!==null?e.pointerId!==pointerId:e.pointerType!=='mouse')return;
-  const p=pointerPosition(e);scene.point(p.x,p.y);
+  const p=pointerPosition(e);scene.point(p.x,p.y,pointerPressure(e));
 });
 function endPointer(e){if(e.pointerId===pointerId){pointerId=null;scene?.leave();}}
 stage.addEventListener('pointerup',endPointer);stage.addEventListener('pointercancel',endPointer);stage.addEventListener('lostpointercapture',endPointer);
@@ -118,7 +127,7 @@ window.addEventListener('blur',clearInput);
 function frame(now){
   if(active&&scene){
     if(key){const p=scene.gesturePoint(key.type,(now-key.start)/1000);scene.point(p.x,p.y);}
-    scene.frame(now);updateTouchFeedback(now);care?.update(now);sound.update(scene.pet,scene.speed,now/1000);
+    scene.frame(now);updateTouchFeedback(now);care?.update(now);sound.update(scene.pet,scene.speed,now/1000,{zone:scene.zone,pressure:scene.contactForce});
   }
   loop=requestAnimationFrame(frame);
 }

@@ -1,4 +1,18 @@
 const clamp01 = (value) => Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
+// [high-pass Hz, low-pass Hz, relative level]. Keep small facial/paw contact
+// particularly quiet; a fuller coat changes the noise texture, not its volume.
+const BRUSH_PROFILES = Object.freeze({
+  head: [520, 3100, 0.88],
+  ear: [460, 2700, 0.78],
+  paw: [800, 1900, 0.18],
+  chin: [720, 2000, 0.22],
+  nose: [1050, 1650, 0.05],
+  back: [580, 4800, 1],
+  chest: [640, 4300, 0.92],
+  side: [620, 4800, 1],
+  tail: [700, 3900, 0.88],
+  body: [650, 4700, 1],
+});
 
 // Procedural, quiet breathing and brushing; no recordings or tonal purr layer.
 export class DogSound {
@@ -10,12 +24,16 @@ export class DogSound {
     this._breath = null;
     this._brush = null;
     this._breathFilter = null;
+    this._brushHighpass = null;
+    this._brushLowpass = null;
     this._enabled = false;
     this._requested = false;
     this._destroyed = false;
     this._requestId = 0;
     this._contact = 0;
     this._speed = 0;
+    this._zone = 'body';
+    this._pressure = 1;
     this._seconds = 0;
     this._document = typeof document === 'undefined' ? null : document;
     this._onVisibilityChange = () => {
@@ -65,10 +83,12 @@ export class DogSound {
     }
   }
 
-  update(contact, speed, nowSeconds) {
+  update(contact, speed, nowSeconds, { zone = 'body', pressure = 1 } = {}) {
     if (this._destroyed) return;
     this._contact = clamp01(contact);
     this._speed = clamp01(speed);
+    this._zone = typeof zone === 'string' && Object.hasOwn(BRUSH_PROFILES, zone) ? zone : 'body';
+    this._pressure = clamp01(pressure);
     this._seconds = Number.isFinite(nowSeconds) ? nowSeconds : (this._context?.currentTime ?? 0);
     if (!this._enabled || this._document?.hidden || this._context?.state !== 'running') return;
     this._mix();
@@ -111,6 +131,8 @@ export class DogSound {
       brushLowpass.type = 'lowpass';
       brushLowpass.frequency.value = 4300;
       brushLowpass.Q.value = 0.5;
+      this._brushHighpass = brushHighpass;
+      this._brushLowpass = brushLowpass;
       this._brush = own(context.createGain());
       this._brush.gain.value = 0;
       brushHighpass.connect(brushLowpass);
@@ -148,8 +170,15 @@ export class DogSound {
     };
     smooth(this._breath.gain, 0.042 * breath * (0.82 + this._contact * 0.18), 0.09);
     smooth(this._breathFilter.frequency, 440 + 120 * breath, 0.15);
-    // Moving away from the dog cannot produce a brushing sound.
-    smooth(this._brush.gain, 0.035 * this._contact * this._speed, 0.055);
+    const [low, high, level] = BRUSH_PROFILES[this._zone];
+    // Pressure gently rounds the texture; faster movement opens the upper band.
+    // Smooth the existing filters so changing zones never introduces a tick.
+    smooth(this._brushHighpass.frequency, low * (1 - 0.16 * this._pressure + 0.10 * this._speed), 0.14);
+    smooth(this._brushLowpass.frequency, high * (0.82 + 0.18 * this._speed) * (1 - 0.10 * this._pressure), 0.18);
+    // No movement/contact means no brushing. Every profile stays within the
+    // original gain ceiling, including full pressure and the fastest movement.
+    const brushGain = 0.035 * this._contact * this._speed * level * (0.72 + 0.28 * this._pressure);
+    smooth(this._brush.gain, brushGain, 0.075);
   }
 
   _rampMaster(value, duration) {
@@ -178,6 +207,7 @@ export class DogSound {
     this._nodes = [];
     this._sources = [];
     this._master = this._breath = this._brush = this._breathFilter = null;
+    this._brushHighpass = this._brushLowpass = null;
     if (context && context.state !== 'closed') {
       try { Promise.resolve(context.close()).catch(() => {}); } catch { /* Browser already disposed it. */ }
     }
