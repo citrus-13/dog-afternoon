@@ -7,7 +7,7 @@
   <meta name="description" content="一只安静陪着你的狗狗。摸摸头，顺顺毛，看看它开心地摇尾巴。">
   <title>狗狗午后</title>
   <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="./share.css?v=rana-bichon-5">
+  <link rel="stylesheet" href="./share.css?v=location-touch-6">
   <script>{const h=new Date().getHours(),p=h<6||h>=20?'night':h<8?'dawn':h<17?'day':'dusk';document.documentElement.dataset.daypart=p;document.documentElement.dataset.theme=p==='night'?'dark':'light';}</script>
 </head>
 <body>
@@ -22,7 +22,7 @@
   <main>
     <h1 class="heading">狗狗午后</h1>
     <section id="viewer" aria-label="狗狗午后">
-      <div id="stage" tabindex="0" role="group" aria-label="抚摸Rana · 古牧" aria-describedby="gesture" aria-keyshortcuts="Space Enter H E J T" data-ready="false">
+      <div id="stage" tabindex="0" role="group" aria-label="抚摸Rana · 古牧" aria-describedby="gesture" aria-keyshortcuts="Space Enter H E J N P C S T" data-ready="false">
         <img id="room" src="./assets/afternoon-rug.webp" alt="" draggable="false">
         <canvas id="scene" aria-hidden="true"></canvas>
         <span id="toy" data-kind="ball" aria-hidden="true"></span>
@@ -31,6 +31,7 @@
           <img class="hand-palm" src="./assets/petting-hand.webp" alt="" draggable="false">
         </div>
         <div id="moonlight" aria-hidden="true"></div>
+        <p id="touch-feedback" aria-live="off" aria-hidden="true" data-visible="false"></p>
         <span id="loading">狗狗正在趴好…</span>
         <button id="retry" hidden>重新加载</button>
       </div>
@@ -66,10 +67,10 @@
           <p id="care-status" role="status" aria-live="polite" aria-atomic="true">进度会自动保存在这个浏览器。</p>
         </section>
       </div>
-      <p class="hint" id="gesture"><span class="desktop-hint">移动鼠标摸额头、挠耳朵和下巴、顺背毛。按住停留，安抚它。<span class="keyboard-hint">H 额头 · E 耳朵 · J 下巴 · 空格/Enter 顺背 · T 摇尾巴</span></span><span class="touch-hint">用手指摸额头、挠耳朵和下巴、慢慢顺背毛。轻按停留，安抚它。</span></p>
+      <p class="hint" id="gesture"><span class="desktop-hint">按住额头，松手看看毛毛回弹。沿尾巴往外捋，也可以试试鼻尖、前爪和身侧。<span class="keyboard-hint">H 额头 · E 耳朵 · J 下巴 · N 鼻尖 · P 前爪 · C 胸口 · S 身侧 · 空格/Enter 顺背 · T 尾巴</span></span><span class="touch-hint">按住额头，松手看看毛毛回弹。沿尾巴往外捋，也可以试试鼻尖、前爪和身侧。</span></p>
     </section>
     <p id="notice" class="sr-only" role="status" aria-live="polite"></p>
   </main>
-  <script type="module" src="./app.js?v=rana-bichon-5"></script>
+  <script type="module" src="./app.js?v=location-touch-6"></script>
 </body>
 </html>

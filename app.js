@@ -1,14 +1,17 @@
-import {DogScene} from './scene.js?v=rana-bichon-5';
+import {DogScene} from './scene.js?v=location-touch-6';
 import {DogSound} from './sound.js';
 import {bindCare} from './care-ui.js?v=rana-bichon-5';
 
 const $=s=>document.querySelector(s);
 const stage=$('#stage'),viewer=$('#viewer'),notice=$('#notice');
 const soundButton=$('#sound'),expand=$('#expand'),ambientPhase=$('#ambient-phase'),ambientTime=$('#ambient-time');
+const touchFeedback=$('#touch-feedback');
 const buttons=[...document.querySelectorAll('[data-dog]')];
 const names={sheepdog:'Rana · 古牧',cockapoo:'可卡布',golden:'金毛',shiba:'黑柴',samoyed:'萨摩耶',bichon:'比熊'},images=new Map();
 const sound=new DogSound();
 const heldKeys=new Map();
+const touchLabels={head:'额头 · 毛毛轻轻压下',ear:'耳朵 · 轻轻抖了抖',chin:'下巴 · 抬了抬头',nose:'鼻尖 · 嗅了嗅',paw:'前爪 · 轻轻收爪',chest:'胸口 · 慢慢呼吸',side:'身侧 · 往手边靠了靠',back:'背部 · 放松下来',tail:'尾巴 · 顺着手伸直'};
+let feedbackKey='',feedbackUntil=0,feedbackVisible=false;
 let scene,selection='sheepdog',wanted='sheepdog',ticket=0,pointerId=null,key=null,loop=null,ambientTimer=null,active=true,expandedFallback=false;
 try{scene=new DogScene($('#scene'),stage,$('#hand'));}catch(error){$('#loading').textContent='画面暂时无法启动';$('#retry').hidden=false;console.error(error);}
 const announce=text=>{notice.textContent=text;};
@@ -26,13 +29,29 @@ function updateAmbient(){
   if(!document.hidden)ambientTimer=setTimeout(updateAmbient,60000-now.getSeconds()*1000-now.getMilliseconds()+20);
 }
 updateAmbient();
+function showTouchFeedback(visible){
+  if(feedbackVisible===visible)return;
+  feedbackVisible=visible;touchFeedback.dataset.visible=String(visible);
+  touchFeedback.setAttribute('aria-hidden',String(!visible));
+}
+function resetTouchFeedback(){feedbackKey='';feedbackUntil=0;showTouchFeedback(false);}
+function updateTouchFeedback(now){
+  const zone=stage.dataset.touchZone;
+  if(!Object.hasOwn(touchLabels,zone)){resetTouchFeedback();return;}
+  const next=zone+':'+(stage.dataset.behavior||'');
+  if(next!==feedbackKey){
+    feedbackKey=next;feedbackUntil=now+2800;
+    if(touchFeedback.textContent!==touchLabels[zone])touchFeedback.textContent=touchLabels[zone];
+  }
+  showTouchFeedback(now<feedbackUntil);
+}
 async function choose(id){
   if(!scene||!names[id])return;
   wanted=id;const current=++ticket;stage.setAttribute('aria-busy','true');$('#retry').hidden=true;
   try{
     let img=images.get(id);if(!img){img=await scene.load(`./assets/${id}.webp`);images.set(id,img);}
     if(current!==ticket)return;
-    selection=id;scene.setImage(img,id);care?.selectDog(id);stage.dataset.ready='true';stage.dataset.selected=id;stage.setAttribute('aria-label',`抚摸${names[id]}`);
+    selection=id;scene.setImage(img,id);resetTouchFeedback();care?.selectDog(id);stage.dataset.ready='true';stage.dataset.selected=id;stage.setAttribute('aria-label',`抚摸${names[id]}`);
     for(const b of buttons)b.setAttribute('aria-pressed',String(b.dataset.dog===id));
     announce(`已选择${names[id]}`);
   }catch(error){if(current!==ticket)return;$('#loading').textContent='狗狗没有加载好';$('#retry').hidden=false;announce('加载失败，请重试');console.error(error);}
@@ -55,7 +74,7 @@ function clearInput(){
   clearKeys();
   const captured=pointerId;pointerId=null;
   if(captured!==null&&stage.hasPointerCapture(captured))stage.releasePointerCapture(captured);
-  scene?.leave();
+  scene?.leave();resetTouchFeedback();
 }
 stage.addEventListener('pointerdown',e=>{
   if(!scene||e.target.closest('button')||e.button!==0||e.isPrimary===false||pointerId!==null)return;
@@ -71,13 +90,13 @@ stage.addEventListener('pointermove',e=>{
 function endPointer(e){if(e.pointerId===pointerId){pointerId=null;scene?.leave();}}
 stage.addEventListener('pointerup',endPointer);stage.addEventListener('pointercancel',endPointer);stage.addEventListener('lostpointercapture',endPointer);
 stage.addEventListener('pointerleave',()=>{if(pointerId===null&&!key)scene?.leave();});
-function keyGesture(event){return {' ':'back',Enter:'back',h:'head',e:'ear',j:'chin',t:'tail'}[event.key==='Enter'?'Enter':event.key.toLowerCase()];}
+function keyGesture(event){return {' ':'back',Enter:'back',h:'head',e:'ear',j:'chin',n:'nose',p:'paw',c:'chest',s:'side',t:'tail'}[event.key==='Enter'?'Enter':event.key.toLowerCase()];}
 function startKey(next){
   key=next;scene.leave();
   if(!key)return;
-  if(key.type==='tail'){scene.wagTail();return;}
   const p=scene.gesturePoint(key.type,(performance.now()-key.start)/1000);
   scene.press(p.x,p.y);
+  if(key.type==='tail')scene.wagTail();
 }
 stage.addEventListener('keydown',e=>{
   if(e.target!==stage||!scene||e.altKey||e.ctrlKey||e.metaKey)return;
@@ -86,7 +105,7 @@ stage.addEventListener('keydown',e=>{
   const id=e.code||e.key.toLowerCase();
   if(heldKeys.has(id))return;
   const next={id,type,start:performance.now()};heldKeys.set(id,next);startKey(next);
-  announce({head:'正在轻轻摸额头',ear:'正在轻挠耳朵',chin:'正在轻挠下巴',back:'正在慢慢顺背毛',tail:'狗狗开心地摇摇尾巴'}[type]);
+  announce({head:'正在轻轻摸额头',ear:'正在轻挠耳朵',chin:'正在轻挠下巴',nose:'正在轻碰鼻尖',paw:'正在轻碰前爪',chest:'正在轻抚胸口',side:'正在轻抚身侧',back:'正在慢慢顺背毛',tail:'正在顺着尾巴轻轻抚摸'}[type]);
 });
 stage.addEventListener('keyup',e=>{
   const id=e.code||e.key.toLowerCase();
@@ -98,8 +117,8 @@ stage.addEventListener('blur',clearInput);
 window.addEventListener('blur',clearInput);
 function frame(now){
   if(active&&scene){
-    if(key){if(key.type==='tail')scene.wagTail();else{const p=scene.gesturePoint(key.type,(now-key.start)/1000);scene.point(p.x,p.y);}}
-    scene.frame(now);care?.update(now);sound.update(scene.pet,scene.speed,now/1000);
+    if(key){const p=scene.gesturePoint(key.type,(now-key.start)/1000);scene.point(p.x,p.y);}
+    scene.frame(now);updateTouchFeedback(now);care?.update(now);sound.update(scene.pet,scene.speed,now/1000);
   }
   loop=requestAnimationFrame(frame);
 }

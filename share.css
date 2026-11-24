@@ -93,6 +93,8 @@ main { width: min(100%, 1376px); margin: auto; padding: clamp(16px, 3vw, 44px); 
 html[data-daypart=dawn] #moonlight { opacity: .16; background: linear-gradient(127deg, #f3dfbf, #b5cad8); }
 html[data-daypart=dusk] #moonlight { opacity: .24; background: linear-gradient(127deg, #ebbd93, #a9b2ca); }
 html[data-theme=dark] #moonlight { opacity: 1; }
+#touch-feedback { position: absolute; z-index: 5; left: 10px; bottom: 10px; max-width: calc(100% - 20px); margin: 0; padding: 5px 9px; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); color: var(--muted); font-size: 12px; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; opacity: 0; visibility: hidden; transition: opacity .18s, visibility .18s; }
+#touch-feedback[data-visible=true] { opacity: 1; visibility: visible; }
 #stage[data-ready=true] #scene { opacity: 1; }
 #stage[data-ready=true] #loading { visibility: hidden; }
 #loading, #retry { position: absolute; z-index: 5; top: 50%; left: 50%; translate: -50% -50%; padding: 8px 12px; border-radius: 12px; background: var(--panel); white-space: nowrap; }
@@ -138,7 +140,7 @@ button:focus-visible, #stage:focus-visible { outline: 3px solid var(--accent); o
 #growth-status, #care-status { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
 #care-status { min-height: 1.5em; }
 .hint { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: 14px; line-height: 1.6; }
-.keyboard-hint { display: inline-block; margin-left: 8px; }
+.keyboard-hint { display: block; margin-top: 3px; font-size: 13px; }
 .touch-hint { display: none; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
