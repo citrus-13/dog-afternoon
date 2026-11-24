@@ -7,7 +7,7 @@
   <meta name="description" content="一只安静陪着你的狗狗。摸摸头，顺顺毛，看看它开心地摇尾巴。">
   <title>狗狗午后</title>
   <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="./share.css?v=natural-touch-1">
+  <link rel="stylesheet" href="./share.css?v=pet-reactions-2">
   <script>try{const t=new URLSearchParams(location.search).get('theme')||localStorage.getItem('pet-the-dog.theme');if(t==='dark')document.documentElement.dataset.theme=t;}catch{}</script>
 </head>
 <body>
@@ -25,9 +25,10 @@
   <main>
     <h1 class="heading">狗狗午后</h1>
     <section id="viewer" aria-label="狗狗午后">
-      <div id="stage" tabindex="0" role="group" aria-label="抚摸灰白狗狗" aria-describedby="gesture" aria-keyshortcuts="Space Enter T" data-ready="false">
+      <div id="stage" tabindex="0" role="group" aria-label="抚摸灰白狗狗" aria-describedby="gesture" aria-keyshortcuts="Space Enter H J T" data-ready="false">
         <img id="room" src="./assets/rug.webp" alt="" draggable="false">
         <canvas id="scene" aria-hidden="true"></canvas>
+        <span id="toy" data-kind="ball" aria-hidden="true"></span>
         <div id="hand" aria-hidden="true">
           <img class="hand-sleeve" src="./assets/petting-hand.webp" alt="" draggable="false">
           <img class="hand-palm" src="./assets/petting-hand.webp" alt="" draggable="false">
@@ -36,31 +37,45 @@
         <span id="loading">狗狗正在趴好…</span>
         <button id="retry" hidden>重新加载</button>
       </div>
-      <div class="toolbar">
-        <div class="choices" role="group" aria-label="选择狗狗">
-          <button class="dog-choice" data-dog="sheepdog" aria-label="灰白狗狗" aria-pressed="true"><span class="coat coat-sheepdog" aria-hidden="true"></span><span>灰白狗狗</span></button>
-          <button class="dog-choice" data-dog="cockapoo" aria-label="可卡布" aria-pressed="false"><span class="coat coat-cockapoo" aria-hidden="true"></span><span>可卡布</span></button>
-          <button class="dog-choice" data-dog="golden" aria-label="金毛" aria-pressed="false"><span class="coat coat-golden" aria-hidden="true"></span><span>金毛</span></button>
-          <button class="dog-choice" data-dog="shiba" aria-label="黑柴" aria-pressed="false"><span class="coat coat-shiba" aria-hidden="true"></span><span>黑柴</span></button>
-          <button class="dog-choice" data-dog="samoyed" aria-label="萨摩耶" aria-pressed="false"><span class="coat coat-samoyed" aria-hidden="true"></span><span>萨摩耶</span></button>
-        </div>
-        <div class="tools">
-        <button id="theme" class="tool" type="button" role="switch" aria-label="月光模式" aria-checked="false" title="切换日光 / 月光">
-          <svg viewBox="0 0 24 24"><use href="#moon" class="moon"/><use href="#sun" class="sun"/></svg><span>月光</span>
-        </button>
-          <button id="proportions-toggle" class="tool" type="button" aria-label="调整狗狗体型" aria-expanded="false" aria-controls="proportions-panel" title="调整体型"><svg viewBox="0 0 24 24"><use href="#adjust"/></svg><span>体型</span></button>
-          <div id="proportions-panel" role="group" aria-label="狗狗体型" hidden>
-            <label for="dog-size"><span>大小</span><input id="dog-size" type="range" min="0" max="10" step="1" value="5" aria-label="狗狗大小"></label>
-            <label for="dog-width"><span>胖瘦</span><input id="dog-width" type="range" min="0" max="10" step="1" value="5" aria-label="身体胖瘦"></label>
+      <div class="sidebar">
+        <div class="toolbar">
+          <div class="choices" role="group" aria-label="选择狗狗">
+            <button class="dog-choice" data-dog="sheepdog" aria-label="灰白狗狗" aria-pressed="true"><span class="coat coat-sheepdog" aria-hidden="true"></span><span>灰白狗狗</span></button>
+            <button class="dog-choice" data-dog="cockapoo" aria-label="可卡布" aria-pressed="false"><span class="coat coat-cockapoo" aria-hidden="true"></span><span>可卡布</span></button>
+            <button class="dog-choice" data-dog="golden" aria-label="金毛" aria-pressed="false"><span class="coat coat-golden" aria-hidden="true"></span><span>金毛</span></button>
+            <button class="dog-choice" data-dog="shiba" aria-label="黑柴" aria-pressed="false"><span class="coat coat-shiba" aria-hidden="true"></span><span>黑柴</span></button>
+            <button class="dog-choice" data-dog="samoyed" aria-label="萨摩耶" aria-pressed="false"><span class="coat coat-samoyed" aria-hidden="true"></span><span>萨摩耶</span></button>
           </div>
-          <button id="sound" class="tool" type="button" role="switch" aria-label="狗狗呼吸声" aria-checked="false" title="开启 / 关闭呼吸声"><svg viewBox="0 0 24 24"><use href="#speaker"/><use class="muted" href="#muted"/><use class="waves" href="#waves"/></svg><span>呼吸声</span></button>
-          <button id="expand" class="tool" type="button" aria-label="全屏显示" aria-pressed="false" title="全屏"><svg viewBox="0 0 24 24"><use href="#full"/></svg><span>全屏</span></button>
+          <div class="tools">
+          <button id="theme" class="tool" type="button" role="switch" aria-label="月光模式" aria-checked="false" title="切换日光 / 月光">
+            <svg viewBox="0 0 24 24"><use href="#moon" class="moon"/><use href="#sun" class="sun"/></svg><span>月光</span>
+          </button>
+            <button id="proportions-toggle" class="tool" type="button" aria-label="调整狗狗体型" aria-expanded="false" aria-controls="proportions-panel" title="调整体型"><svg viewBox="0 0 24 24"><use href="#adjust"/></svg><span>体型</span></button>
+            <div id="proportions-panel" role="group" aria-label="狗狗体型" hidden>
+              <label for="dog-size"><span>大小</span><input id="dog-size" type="range" min="0" max="10" step="1" value="5" aria-label="狗狗大小"></label>
+              <label for="dog-width"><span>胖瘦</span><input id="dog-width" type="range" min="0" max="10" step="1" value="5" aria-label="身体胖瘦"></label>
+            </div>
+            <button id="sound" class="tool" type="button" role="switch" aria-label="狗狗呼吸声" aria-checked="false" title="开启 / 关闭呼吸声"><svg viewBox="0 0 24 24"><use href="#speaker"/><use class="muted" href="#muted"/><use class="waves" href="#waves"/></svg><span>呼吸声</span></button>
+            <button id="expand" class="tool" type="button" aria-label="全屏显示" aria-pressed="false" title="全屏"><svg viewBox="0 0 24 24"><use href="#full"/></svg><span>全屏</span></button>
+          </div>
         </div>
+        <section class="care" aria-label="照顾狗狗">
+          <div class="care-meters">
+            <div class="care-meter"><label for="affection">好感 <span id="affection-value">0%</span></label><progress id="affection" max="100" value="0">0%</progress></div>
+            <div class="care-meter"><label for="fullness">饱腹 <span id="fullness-value">46%</span></label><progress id="fullness" max="100" value="46">46%</progress></div>
+          </div>
+          <div class="care-actions" role="group" aria-label="照料与玩耍">
+            <button id="feed-treat" type="button">给零食</button>
+            <button id="feed-meal" type="button">喂狗粮</button>
+            <button id="roll-ball" type="button">滚球</button>
+          </div>
+          <p id="care-status" role="status" aria-live="polite" aria-atomic="true">进度会自动保存在这个浏览器。</p>
+        </section>
       </div>
-      <p class="hint" id="gesture"><span class="desktop-hint">移动鼠标或按住拖动，轻轻顺毛。<span class="keyboard-hint">空格抚摸 · T 摇尾巴</span></span><span class="touch-hint">用手指慢慢划过，轻轻顺毛。</span></p>
+      <p class="hint" id="gesture"><span class="desktop-hint">移动鼠标摸额头、挠下巴、顺背毛。按住停留，安抚它。<span class="keyboard-hint">H 额头 · J 下巴 · 空格/Enter 顺背 · T 摇尾巴</span></span><span class="touch-hint">用手指摸额头、挠下巴、慢慢顺背毛。轻按停留，安抚它。</span></p>
     </section>
     <p id="notice" class="sr-only" role="status" aria-live="polite"></p>
   </main>
-  <script type="module" src="./app.js?v=natural-touch-1"></script>
+  <script type="module" src="./app.js?v=pet-reactions-2"></script>
 </body>
 </html>
