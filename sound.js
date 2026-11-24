@@ -34,6 +34,7 @@ export class DogSound {
     this._speed = 0;
     this._zone = 'body';
     this._pressure = 1;
+    this._tap = 0;
     this._seconds = 0;
     this._document = typeof document === 'undefined' ? null : document;
     this._onVisibilityChange = () => {
@@ -83,12 +84,13 @@ export class DogSound {
     }
   }
 
-  update(contact, speed, nowSeconds, { zone = 'body', pressure = 1 } = {}) {
+  update(contact, speed, nowSeconds, { zone = 'body', pressure = 1, tap = 0 } = {}) {
     if (this._destroyed) return;
     this._contact = clamp01(contact);
     this._speed = clamp01(speed);
     this._zone = typeof zone === 'string' && Object.hasOwn(BRUSH_PROFILES, zone) ? zone : 'body';
     this._pressure = clamp01(pressure);
+    this._tap = clamp01(tap);
     this._seconds = Number.isFinite(nowSeconds) ? nowSeconds : (this._context?.currentTime ?? 0);
     if (!this._enabled || this._document?.hidden || this._context?.state !== 'running') return;
     this._mix();
@@ -175,10 +177,10 @@ export class DogSound {
     // Smooth the existing filters so changing zones never introduces a tick.
     smooth(this._brushHighpass.frequency, low * (1 - 0.16 * this._pressure + 0.10 * this._speed), 0.14);
     smooth(this._brushLowpass.frequency, high * (0.82 + 0.18 * this._speed) * (1 - 0.10 * this._pressure), 0.18);
-    // No movement/contact means no brushing. Every profile stays within the
-    // original gain ceiling, including full pressure and the fastest movement.
-    const brushGain = 0.035 * this._contact * this._speed * level * (0.72 + 0.28 * this._pressure);
-    smooth(this._brush.gain, brushGain, 0.075);
+    const stroke = 0.060 * this._contact * this._speed ** 0.62 * (0.68 + 0.32 * this._pressure);
+    const contact = 0.024 * this._tap ** 1.45 * (1 - 0.55 * this._speed);
+    const brushGain = Math.min(0.062, (stroke + contact) * level);
+    smooth(this._brush.gain, brushGain, 0.038);
   }
 
   _rampMaster(value, duration) {

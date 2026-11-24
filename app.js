@@ -1,18 +1,20 @@
-import {DogScene} from './scene.js?v=felt-touch-12';
-import {DogSound} from './sound.js?v=soft-touch-7';
+import {DogScene} from './scene.js?v=bernese-13';
+import {DogSound} from './sound.js?v=bernese-13';
 import {bindCare} from './care-ui.js?v=rana-bichon-5';
+import {bindHaptics} from './haptics.js?v=bernese-13';
 
 const $=s=>document.querySelector(s);
 const stage=$('#stage'),viewer=$('#viewer'),notice=$('#notice');
 const soundButton=$('#sound'),expand=$('#expand'),ambientPhase=$('#ambient-phase'),ambientTime=$('#ambient-time');
 const touchFeedback=$('#touch-feedback');
 const buttons=[...document.querySelectorAll('[data-dog]')];
-const names={sheepdog:'Rana · 古牧',cockapoo:'可卡布',golden:'金毛',shiba:'黑柴',samoyed:'萨摩耶',bichon:'比熊'},images=new Map();
+const names={sheepdog:'Rana · 古牧',cockapoo:'可卡布',golden:'金毛',shiba:'黑柴',samoyed:'萨摩耶',bichon:'比熊',bernese:'伯恩山'},images=new Map();
 const sound=new DogSound();
+const haptics=bindHaptics($('#haptics'));
 const heldKeys=new Map();
 const touchLabels={head:'额头',ear:'耳朵',chin:'下巴',nose:'鼻尖',paw:'前爪',chest:'胸口',side:'身侧',back:'背部',tail:'尾巴'};
 const touchResponses={
-  head:{'fur-press':'毛毛轻轻压下'},
+  head:{'fur-press':'毛毛轻轻压下','head-soften':'眯了眯眼睛'},
   ear:{ear:'耳尖动了动','ear-fold':'耳尖轻轻折下'},
   chin:{chin:'轻轻抬了抬头'},
   nose:{sniff:'连着轻嗅两下'},
@@ -88,7 +90,7 @@ async function choose(id){
 for(const b of buttons)b.addEventListener('click',()=>choose(b.dataset.dog));
 $('#retry').addEventListener('click',()=>scene&&!scene.contextLost?choose(wanted):location.reload());
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&expandedFallback)setFallback(false);});
-soundButton.addEventListener('click',async()=>{soundButton.disabled=true;try{const enabled=await sound.setEnabled(soundButton.getAttribute('aria-checked')!=='true');soundButton.setAttribute('aria-checked',String(enabled));announce(enabled?'已开启合成呼吸声':'已关闭声音');}catch(error){soundButton.setAttribute('aria-checked','false');announce('当前浏览器暂时不能播放声音');console.error(error);}finally{soundButton.disabled=false;}});
+soundButton.addEventListener('click',async()=>{soundButton.disabled=true;try{const enabled=await sound.setEnabled(soundButton.getAttribute('aria-checked')!=='true');soundButton.setAttribute('aria-checked',String(enabled));announce(enabled?'已开启呼吸和抚摸声音':'已关闭声音');}catch(error){soundButton.setAttribute('aria-checked','false');announce('当前浏览器暂时不能播放声音');console.error(error);}finally{soundButton.disabled=false;}});
 function syncExpanded(){const expanded=Boolean(document.fullscreenElement)||expandedFallback;expand.setAttribute('aria-pressed',String(expanded));expand.setAttribute('aria-label',expanded?'退出全屏':'全屏显示');expand.querySelector('use').setAttribute('href',expanded?'#exit':'#full');}
 function setFallback(value){expandedFallback=value;viewer.classList.toggle('is-expanded',value);document.body.classList.toggle('expanded',value);syncExpanded();}
 expand.addEventListener('click',async()=>{try{if(document.fullscreenElement)await document.exitFullscreen();else if(expandedFallback)setFallback(false);else if(viewer.requestFullscreen)await viewer.requestFullscreen();else setFallback(true);}catch{setFallback(!expandedFallback);}syncExpanded();});
@@ -110,22 +112,22 @@ function clearInput(){
   clearKeys();
   const captured=pointerId;pointerId=null;
   if(captured!==null){try{if(stage.hasPointerCapture?.(captured))stage.releasePointerCapture?.(captured);}catch{}}
-  scene?.leave();resetTouchFeedback();
+  haptics.cancel();scene?.leave();resetTouchFeedback();
 }
 stage.addEventListener('pointerdown',e=>{
   if(!scene||e.target.closest('button')||e.isPrimary===false||pointerId!==null)return;
   if(e.pointerType!=='touch'&&e.button!==0)return;
   clearKeys();scene.leave();pointerId=e.pointerId;
-  const p=pointerPosition(e);scene.press(p.x,p.y,pointerPressure(e));e.preventDefault();
+  const p=pointerPosition(e);scene.press(p.x,p.y,pointerPressure(e));haptics.press(e,scene);e.preventDefault();
   try{stage.setPointerCapture?.(e.pointerId);}catch{}
   if(e.pointerType!=='touch')stage.focus?.({preventScroll:true});
 });
 stage.addEventListener('pointermove',e=>{
   if(!scene||key||e.target.closest('button'))return;
   if(pointerId!==null?e.pointerId!==pointerId:e.pointerType!=='mouse')return;
-  const p=pointerPosition(e);scene.point(p.x,p.y,pointerPressure(e));
+  const p=pointerPosition(e);scene.point(p.x,p.y,pointerPressure(e));haptics.point(e,scene);
 });
-function endPointer(e){if(e.pointerId===pointerId){pointerId=null;scene?.leave();}}
+function endPointer(e){if(e.pointerId===pointerId){pointerId=null;haptics.end(e,scene);scene?.leave();}}
 stage.addEventListener('pointerup',endPointer);stage.addEventListener('pointercancel',endPointer);stage.addEventListener('lostpointercapture',endPointer);
 window.addEventListener('pointerup',endPointer);window.addEventListener('pointercancel',endPointer);
 stage.addEventListener('pointerleave',()=>{if(pointerId===null&&!key)scene?.leave();});
@@ -157,7 +159,7 @@ window.addEventListener('blur',clearInput);
 function frame(now){
   if(active&&scene){
     if(key){const p=scene.gesturePoint(key.type,(now-key.start)/1000);scene.point(p.x,p.y);}
-    scene.frame(now);updateTouchFeedback(now);care?.update(now);sound.update(scene.pet,scene.speed,now/1000,{zone:scene.zone,pressure:scene.contactForce});
+    scene.frame(now);updateTouchFeedback(now);care?.update(now);sound.update(scene.pet,scene.speed,now/1000,{zone:scene.zone,pressure:scene.contactForce,tap:scene.pat});
   }
   loop=requestAnimationFrame(frame);
 }

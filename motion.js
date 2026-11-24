@@ -1,9 +1,9 @@
 const clamp=(n,a=0,b=1)=>Math.max(a,Math.min(b,n));
 const smooth=(a,b,n)=>{const t=clamp((n-a)/(b-a));return t*t*(3-2*t);};
 const duration={treat:1.90,meal:2.80,ball:2.55};
-const localCooldown={nose:1.3,paw:1.6,chin:2.6,chest:3.8,side:2.8,tail:2.6};
-const localLength={nose:.9,paw:1.0,chin:2.6,chest:3.2,side:2.6,tail:2.5};
-const responseWindow={nose:.66,paw:.50,ear:.80,chin:.85,chest:1.05,side:.85,tail:1.25,head:.24,back:.25};
+const localCooldown={nose:.80,paw:.90,chin:1.8,chest:2.2,side:1.5,tail:1.9};
+const localLength={nose:1.1,paw:1.2,chin:2.8,chest:3.2,side:2.6,tail:2.5};
+const responseWindow={nose:.84,paw:.78,ear:1.0,chin:1.4,chest:1.15,side:1.0,tail:1.25,head:.24,back:.25};
 const pulse=(age,rise,hold,end)=>smooth(0,rise,age)*(1-smooth(hold,end,age));
 
 // Timing and intent only: the rig decides how these normalized cues move the art.
@@ -12,6 +12,7 @@ export class DogMotion{
     this.random=random;this.time=0;this.idleFor=0;
     this.nextBlink=this.between(2.4,4.8);this.nextStretch=this.between(4,7.6);
     this.blinkAt=-Infinity;this.blinkClose=.12;this.blinkHold=.06;this.blinkOpen=.25;
+    this.headEyeAt=-Infinity;this.headEye=0;this.headAcknowledged=false;this.nextHeadEye=0;
     this.stretchAt=-Infinity;this.stretchLength=3;
     this.earAt=-Infinity;this.nextEar=0;
     this.earContactAt=-Infinity;this.earFoldStrength=.7;this.chinStrength=.85;
@@ -66,6 +67,7 @@ export class DogMotion{
     if(newTouch){
       this.holdIntentTime=0;this.strokeIntentTime=0;this.tailHeldTime=0;
       if(this.activePart!==zone||differentPaw){this.activePart='idle';this.slowBlinkAt=Infinity;}
+      if(zone==='head'){this.headAcknowledged=false;this.headEyeAt=-Infinity;}
     }
     if(!contact||kind){this.holdIntentTime=0;this.strokeIntentTime=0;}
     else{
@@ -81,6 +83,7 @@ export class DogMotion{
       this.activePart=zone;
       this.intentUntil=this.time+(responseWindow[zone]??.25);
       if(zone==='paw')this.activePaw=pawNumber;
+      if(zone==='head'&&this.time>=this.nextHeadEye)this.headAcknowledged=false;
     }
     // Passing the hand over a part is not a request for a pose. A deliberate
     // short tap is latched briefly; held pressure or a sustained stroke keeps
@@ -95,6 +98,14 @@ export class DogMotion{
       this.stretchAt=-Infinity;this.slowBlinkAt=Infinity;
       if(kind!=='ball')this.blink(.25,true);
     }
+    if(!kind&&zone==='head'&&intent&&!this.headAcknowledged&&this.time>=this.nextHeadEye&&
+      (heldIntent||this.strokeIntentTime>=.14)){
+      // A forehead hold or deliberate pass gets one readable, soft eye closure.
+      // It uses only the eye channel and cannot repeat from stationary hovering.
+      this.headEyeAt=this.time+.025;this.headAcknowledged=true;this.nextHeadEye=this.time+4;
+      this.nextRestBlink=Math.max(this.nextRestBlink,this.time+5.5);
+      this.nextBlink=Math.max(this.nextBlink,this.time+5.5);this.slowBlinkAt=Infinity;
+    }
     if(slowRest&&!this.wasResting&&!kind&&this.time>=this.nextRestBlink){
       this.queueSlowBlink(this.between(.35,.60));
       this.nextRestBlink=this.time+5.5;
@@ -103,9 +114,9 @@ export class DogMotion{
     // left in place, or a comfort value held high, cannot restart the response.
     if(comfort<.34)this.comfortReady=true;
     if(this.comfortReady&&comfort>=.68&&zone==='back'&&strokeIntent&&!resting&&!kind&&this.time>=this.nextComfort){
-      this.comfortAt=this.time;this.comfortLength=this.between(2.9,3.5);
+      this.comfortAt=this.time;this.comfortLength=this.between(3.1,3.6);
       this.comfortReady=false;this.nextComfort=this.time+6;
-      this.queueSlowBlink(this.between(.18,.34));
+      this.queueSlowBlink(this.between(.08,.16));
     }
     if(sniffHand&&!this.wasSniffingHand&&!contact&&!tapped&&!kind&&this.time>=this.nextLocal.nose){
       this.activePart='nose';this.localAt.nose=this.time;this.sniffScale=.55;
@@ -135,15 +146,15 @@ export class DogMotion{
     }
     if((contact||tapEdge)&&zone==='ear'&&!kind&&
       ((onset&&this.time>=(this.nextTouch.ear??0))||(strokeIntent&&this.time>=this.nextEar))){
-      this.earAt=this.time;this.nextEar=this.time+this.between(1.5,2.3);
+      this.earAt=this.time-(tapEdge?Math.min(dt,.025):0);this.nextEar=this.time+this.between(1.5,2.3);
       this.earFoldStrength=.58+.22*pressure;
-      this.nextTouch.ear=this.time+1.2;
+      this.nextTouch.ear=this.time+.85;
     }
     const previousBackTime=this.backStrokeTime;
     this.backStrokeTime=!kind&&zone==='back'&&rubbing?Math.min(1,this.backStrokeTime+dt):0;
     if(this.backStrokeTime>=.10&&previousBackTime<.10)this.backAt=this.time;
     const localBusy=Object.keys(localLength).some(part=>this.time-this.localAt[part]<localLength[part])||
-      this.time-this.earAt<1.9||this.value.earFold>.025||this.value.back>.025;
+      this.time-this.earAt<1.9||this.value.earFold>.025||this.value.back>.025||this.headEye>.025;
     this.idleFor=contact||resting||kind||tapEdge||localBusy?0:this.idleFor+dt;
     if(this.time>=this.slowBlinkAt){this.slowBlinkAt=Infinity;this.blink(0,true);}
     if(this.slowBlinkAt===Infinity&&this.time>=this.nextBlink&&
@@ -154,32 +165,34 @@ export class DogMotion{
     }
     const blinkAge=this.time-this.blinkAt;
     const blink=smooth(0,this.blinkClose,blinkAge)*(1-smooth(this.blinkClose+this.blinkHold,this.blinkClose+this.blinkHold+this.blinkOpen,blinkAge));
+    const headEyeAge=this.time-this.headEyeAt;
+    const headEye=kind||this.activePart!=='head'?0:.94*pulse(headEyeAge,.13,.29,.68);
     const stretchAge=this.time-this.stretchAt;
     let stretch=smooth(0,.85,stretchAge)*(1-smooth(1.65,this.stretchLength,stretchAge));
     const earAge=this.time-this.earAt;
-    const flick=smooth(0,.045,earAge)*(1-smooth(.10,.23,earAge));
-    const rebound=smooth(.12,.21,earAge)*(1-smooth(.27,.42,earAge));
+    const flick=smooth(0,.035,earAge)*(1-smooth(.16,.30,earAge));
+    const rebound=smooth(.19,.27,earAge)*(1-smooth(.34,.49,earAge));
     const ear=kind?0:(.48*flick-.14*rebound)*localGain('ear');
     const earHold=intent&&zone==='ear'?
       smooth(.20,.60,this.time-this.earContactAt)*(.28+.34*pressure+(strokeIntent?.12:0)):0;
-    const earFold=kind?0:Math.max(this.earFoldStrength*pulse(earAge-.18,.30,.72,1.55),earHold)*localGain('ear');
+    const earFold=kind?0:Math.max(this.earFoldStrength*pulse(earAge-.16,.26,.60,1.20),earHold)*localGain('ear');
     const noseAge=this.time-this.localAt.nose;
-    const sniff=kind?0:(.86*pulse(noseAge,.055,.115,.215)+pulse(noseAge-.29,.060,.125,.245))*localGain('nose')*this.sniffScale;
-    const pawTarget=index=>kind?0:pulse(this.time-this.pawAt[index],.075,.18,.58)*localGain('paw')*(this.activePaw===index?1:0);
+    const sniff=kind?0:(.86*pulse(noseAge,.045,.15,.27)+pulse(noseAge-.34,.050,.17,.31))*localGain('nose')*this.sniffScale;
+    const pawTarget=index=>kind?0:pulse(this.time-this.pawAt[index],.055,.28,.72)*localGain('paw')*(this.activePaw===index?1:0);
     const pawA=pawTarget(0),pawB=pawTarget(1),paw=Math.max(pawA,pawB);
     const chinAge=this.time-this.localAt.chin;
-    const chinHold=intent&&zone==='chin'?smooth(.25,.9,chinAge)*(.42+.28*pressure):0;
-    const chin=kind?0:Math.max(this.chinStrength*pulse(chinAge,.40,.88,2.10),chinHold)*localGain('chin');
+    const chinHold=intent&&zone==='chin'?smooth(.35,1.05,chinAge)*(.42+.28*pressure):0;
+    const chin=kind?0:Math.max(this.chinStrength*pulse(chinAge,.48,1.08,2.20),chinHold)*localGain('chin');
     const chest=kind?0:pulse(this.time-this.localAt.chest,.65,1.10,2.60)*localGain('chest');
     const side=kind?0:pulse(this.time-this.localAt.side,.38,.82,1.95)*localGain('side');
-    const back=kind?0:smooth(.10,.38,this.backStrokeTime)*(.65+.25*pressure)*(.85+.15*comfort)*localGain('back');
+    const back=kind?0:smooth(.10,.28,this.backStrokeTime)*(.65+.25*pressure)*(.85+.15*comfort)*localGain('back');
     const tailTouch=kind?0:this.tailTouchSize*pulse(this.time-this.localAt.tail,.13,.43,1.52)*localGain('tail');
     const comfortAge=this.time-this.comfortAt;
-    const comfortTail=smooth(0,.50,comfortAge)*(1-smooth(1.35,this.comfortLength,comfortAge))*(this.activePart==='back'?1:0);
+    const comfortTail=smooth(0,.38,comfortAge)*(1-smooth(1.65,this.comfortLength,comfortAge))*(this.activePart==='back'?1:0);
     // Local cues only move their own patch. Global poses belong to idle stretch
     // and explicit care actions; only tail contact and back comfort add a wag.
     let nod=stretch*.16,tilt=0;
-    let tail=Math.max(stretch*.08,comfortTail*(.25+.08*bond),tailTouch);
+    let tail=Math.max(stretch*.08,comfortTail*(.32+.08*bond),tailTouch);
     let behavior=slowRest?'settle':contact?'watch':'idle';
     if(kind){
       const t=actionTime,end=duration[kind];
@@ -197,7 +210,8 @@ export class DogMotion{
     }
     const ease=(a,b,seconds)=>a+(b-a)*-Math.expm1(-dt/seconds),v=this.value;
     const localEase=(part,from,to,rise,fall)=>ease(from,to,to>from?rise:this.activePart===part?fall:Math.min(fall,.12));
-    v.blink=clamp(blink);
+    this.headEye=clamp(ease(this.headEye,headEye,headEye>this.headEye?.035:.075));
+    v.blink=clamp(Math.max(blink,this.headEye));
     v.nod=clamp(ease(v.nod,nod,resting?.42:kind?.12:contact?.17:.38),-1,1);
     v.tilt=clamp(ease(v.tilt,tilt,resting?.48:kind?.14:.25),-1,1);
     v.stretch=clamp(ease(v.stretch,stretch,kind?.10:.18));
@@ -209,10 +223,10 @@ export class DogMotion{
     v.pawA=clamp(ease(v.pawA,pawA,pawA>v.pawA?.040:this.activePart==='paw'&&this.activePaw===0?.095:.06));
     v.pawB=clamp(ease(v.pawB,pawB,pawB>v.pawB?.040:this.activePart==='paw'&&this.activePaw===1?.095:.06));
     v.paw=Math.max(v.pawA,v.pawB);
-    v.chin=clamp(localEase('chin',v.chin,chin,.16,.22));
+    v.chin=clamp(localEase('chin',v.chin,chin,.20,.26));
     v.chest=clamp(localEase('chest',v.chest,chest,.18,.26));
     v.side=clamp(localEase('side',v.side,side,.15,.22));
-    v.back=clamp(localEase('back',v.back,back,.28,.30));
+    v.back=clamp(localEase('back',v.back,back,.18,.30));
     this.tailAck=clamp(ease(this.tailAck,tailTouch,tailTouch>this.tailAck?.22:.32));
     if(!kind){
       let latest=-Infinity;
@@ -222,6 +236,9 @@ export class DogMotion{
         ['side','side',this.localAt.side,v.side,2.05],['tail','tail',this.localAt.tail,this.tailAck,1.65]];
       for(const [part,name,at,strength,activeFor] of responses){
         if(part===this.activePart&&(strength>.025||(localGain(part)&&this.time-at<activeFor))&&at>=latest){behavior=name;latest=at;}
+      }
+      if(this.activePart==='head'&&headEyeAge>=0&&headEyeAge<.85){
+        behavior=v.blink>.04?'blink':'settle';latest=this.headEyeAt;
       }
       if(this.activePart==='back'&&comfortAge>=0&&comfortAge<this.comfortLength+.5){
         behavior=v.blink>.04?'blink':'settle';latest=this.comfortAt;

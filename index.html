@@ -7,7 +7,7 @@
   <meta name="description" content="一只安静陪着你的狗狗。摸摸头，顺顺毛，看看它开心地摇尾巴。">
   <title>狗狗午后</title>
   <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="./share.css?v=location-touch-6">
+  <link rel="stylesheet" href="./share.css?v=bernese-13">
   <script>{const h=new Date().getHours(),p=h<6||h>=20?'night':h<8?'dawn':h<17?'day':'dusk';document.documentElement.dataset.daypart=p;document.documentElement.dataset.theme=p==='night'?'dark':'light';}</script>
 </head>
 <body>
@@ -44,12 +44,14 @@
             <button class="dog-choice" data-dog="shiba" aria-label="黑柴" aria-pressed="false"><span class="coat coat-shiba" aria-hidden="true"></span><span>黑柴</span></button>
             <button class="dog-choice" data-dog="samoyed" aria-label="萨摩耶" aria-pressed="false"><span class="coat coat-samoyed" aria-hidden="true"></span><span>萨摩耶</span></button>
             <button class="dog-choice" data-dog="bichon" aria-label="比熊" aria-pressed="false"><span class="coat coat-bichon" aria-hidden="true"></span><span>比熊</span></button>
+            <button class="dog-choice" data-dog="bernese" aria-label="伯恩山" aria-pressed="false"><span class="coat coat-bernese" aria-hidden="true"></span><span>伯恩山</span></button>
           </div>
           <div class="tools">
             <div id="ambient" class="ambient" role="group" aria-label="设备本地时间" aria-live="off" title="跟随设备本地时间">
               <span id="ambient-phase">本地</span><time id="ambient-time">--:--</time>
             </div>
-            <button id="sound" class="tool" type="button" role="switch" aria-label="狗狗呼吸声" aria-checked="false" title="开启 / 关闭呼吸声"><svg viewBox="0 0 24 24"><use href="#speaker"/><use class="muted" href="#muted"/><use class="waves" href="#waves"/></svg><span>呼吸声</span></button>
+            <button id="sound" class="tool" type="button" role="switch" aria-label="呼吸和抚摸声音" aria-checked="false" title="开启 / 关闭呼吸和抚摸声音"><svg viewBox="0 0 24 24"><use href="#speaker"/><use class="muted" href="#muted"/><use class="waves" href="#waves"/></svg><span>声音</span></button>
+            <button id="haptics" class="tool" type="button" role="switch" aria-label="触感反馈" aria-checked="true" title="开启 / 关闭触感反馈" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#paw"/></svg><span>触感</span></button>
             <button id="expand" class="tool" type="button" aria-label="全屏显示" aria-pressed="false" title="全屏"><svg viewBox="0 0 24 24"><use href="#full"/></svg><span>全屏</span></button>
           </div>
         </div>
@@ -71,6 +73,6 @@
     </section>
     <p id="notice" class="sr-only" role="status" aria-live="polite"></p>
   </main>
-  <script type="module" src="./app.js?v=felt-touch-12"></script>
+  <script type="module" src="./app.js?v=bernese-13"></script>
 </body>
 </html>

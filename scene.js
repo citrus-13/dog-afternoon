@@ -1,5 +1,5 @@
-import {DogMotion} from './motion.js?v=natural-touch-9';
-import {dogRig} from './motion-rig.js?v=natural-touch-9';
+import {DogMotion} from './motion.js?v=bernese-13';
+import {dogRig} from './motion-rig.js?v=bernese-13';
 import {CoatTrail,coatTrailGLSL} from './coat-trail.js?v=soft-touch-7';
 
 const clamp=(n,a=0,b=1)=>Math.max(a,Math.min(b,n));
@@ -11,7 +11,8 @@ const tailRoot={
   golden:{x:.77,y:.59},
   shiba:{x:.84,y:.35},
   samoyed:{x:.74,y:.56},
-  bichon:{x:.795,y:.52}
+  bichon:{x:.795,y:.52},
+  bernese:{x:.731,y:.585,slope:-.16,extended:true,bend:.72}
 };
 // Coordinates are measured on the transparent cutouts, so the same gestures
 // follow the dog's anatomy when the stage or proportions change.
@@ -21,12 +22,14 @@ const face={
   golden:{head:[.263,.34],chin:[.135,.63]},
   shiba:{head:[.174,.34],chin:[.120,.63]},
   samoyed:{head:[.171,.39],chin:[.127,.67]},
-  bichon:{head:[.258,.350],chin:[.282,.681]}
+  bichon:{head:[.258,.350],chin:[.282,.681]},
+  bernese:{head:[.226,.196],chin:[.220,.455]}
 };
 const back=[.58,.40];
 const pointZones=['nose','paw','tail','ear','chest','side'];
 const coatZones=new Set(['head','ear','chin','chest','side','back','tail']);
 const restingZones=new Set(['head','chest','back']);
+const faceZones=new Set(['head','ear','chin','nose']);
 const coatPressure={head:.91,ear:.65,chin:.52,nose:.38,paw:.56,chest:.72,side:.70,back:.84,tail:.66};
 const regionRadius=(u,v,[cx,cy,rx,ry])=>((u-cx)/rx)**2+((v-cy)/ry)**2;
 const jointWeight=(u,v,region)=>1-smooth(.55,4.8,regionRadius(u,v,region));
@@ -83,13 +86,13 @@ void main(){
   vec2 pressOffset=(vUV-uTouch.zw)*vec2(1.,.60);
   float press=uFurPress*exp(-dot(pressOffset,pressOffset)*mix(390.,250.,uFurPress));
   vec3 trail=coatTrail(vUV);
-  vec2 brushedUV=coatUV-uDirection*contact*.0033-vec2(0.,press*.0050)-trail.xy*.008;
+  vec2 brushedUV=coatUV-uDirection*contact*.0038-vec2(0.,press*.0062)-trail.xy*.010;
   vec4 brushed=texture2D(uImage,brushedUV);
   float inside=smoothstep(.85,.99,min(coat.a,brushed.a));
   vec3 fur=mix(coat.rgb,brushed.rgb,inside);
   float rim=press*smoothstep(-.047,.035,-pressOffset.y);
   vec2 grain=normalize(vec2(1.,mix(.37,.16,smoothstep(.34,.57,vUV.x))));
-  float lay=inside*(dot(trail.xy,grain)*-.036-trail.z*.012);
+  float lay=inside*(dot(trail.xy,grain)*-.055-trail.z*.015);
   gl_FragColor=vec4(fur*(1.-contact*.115-press*.062-rim*.064+lay),coat.a);
 }`;
 
@@ -220,6 +223,7 @@ export class DogScene{
     this.contactTexture=null;
     this.furTouch=null;
     this.headTouch=null;
+    this.faceHand=0;
     this.inputPressure=undefined;
     this.contactForce=0;
     this.pressAge=0;
@@ -249,6 +253,7 @@ export class DogScene{
     this.tailReleaseTime=0;
     this.tailReleaseTravel=0;
     this.pawIndex=0;
+    this.earIndex=0;
     this.feedbackPaw=0;
     this.feedbackZone='idle';
     this.feedbackTime=0;
@@ -283,7 +288,8 @@ export class DogScene{
   touchZone(u,v){
     let best=null,bestDistance=Infinity;
     for(const zone of pointZones){
-      const areas=zone==='paw'?this.rig.paws:zone==='ear'?[this.rig.ear]:[this.rig.touch?.[zone]];
+      const areas=zone==='paw'?this.rig.paws:zone==='ear'?[this.rig.ear,this.rig.secondEar]
+        :zone==='tail'?[this.rig.touch.tail,this.rig.touch.tailTip]:[this.rig.touch[zone]];
       for(const area of areas){
         if(!area)continue;
         const distance=regionRadius(u,v,area);
@@ -295,6 +301,7 @@ export class DogScene{
     }
     if(best){
       if(best.zone==='paw')this.pawIndex=this.rig.paws.indexOf(best.area);
+      if(best.zone==='ear')this.earIndex=Number(best.area===this.rig.secondEar);
       return best.zone;
     }
     const {head:[hx,hy],chin:[cx,cy]}=this.face;
@@ -413,6 +420,7 @@ export class DogScene{
     this.pressAge=0;
     this.pat=1;
     this.handPosition={...this.target};
+    this.faceHand=Number(faceZones.has(this.zone));
     this.handAlpha=Math.max(this.handAlpha,.86);
     this.pendingTap={zone:this.zone,paw:this.pawIndex};
     if(this.zone==='head')this.headTap=.32;
@@ -473,12 +481,12 @@ export class DogScene{
   deform(u,v,pose){
     const {x,y,w,h}=this.bounds,aspect=h/w;
     const {head:[headX,headY],chin:[chinX,chinY]}=this.face;
-    const {ear,paws,touch:{nose,chest,side,tail}}=this.rig;
+    const {paws,touch:{nose,chest,side,tail}}=this.rig;
     let dx=0,dy=torso(u)*(v-.47)*(this.thickness-1);
     const ribcage=smooth(.27,.48,u)*(1-smooth(.66,.84,u));
     dy+=ribcage*(v-.47)*pose.breath;
 
-    const headAngle=pose.headTurn+pose.chin*.052+pose.sniff*.008;
+    const headAngle=pose.headTurn+pose.chin*.073+pose.sniff*.015;
     const movingHead=Math.abs(headAngle)+Math.abs(pose.headLift)+pose.sniff>.001&&u<.58;
     const movingPaws=pose.paw+pose.stretch>.001&&u<.46;
     // During care, move the muzzle with the head and taper the correction
@@ -499,13 +507,14 @@ export class DogScene{
       }
       skull+=muzzle*(1-skull);
       const [hx,hy]=turn(u,v,neckX,headY*.40+nose[1]*.60,headAngle,aspect);
-      dx+=skull*(hx-pose.sniff*.0025);
-      dy+=skull*(hy-pose.headLift);
+      dx+=skull*(hx-pose.sniff*.006);
+      dy+=skull*(hy-pose.headLift-pose.chin*.003);
     }
     if(Math.abs(pose.ear)+pose.earFold>.001){
+      const ear=pose.earIndex&&this.rig.secondEar?this.rig.secondEar:this.rig.ear;
       const [ex,ey,rx,ry,outward]=ear;
       const rootY=ey+ry*(this.rig.uprightEar?.74:-.78);
-      const angle=outward*(pose.ear*.105-pose.earFold*.105);
+      const angle=outward*(pose.ear*.167-pose.earFold*.147);
       const weight=jointWeight(u,v,ear);
       const [exShift,eyShift]=turn(u,v,ex-outward*rx*.40,rootY,angle,aspect);
       dx+=weight*exShift;
@@ -520,24 +529,24 @@ export class DogScene{
         let weight=jointWeight(u,v,area);
         if(paws.length>1)weight*=smooth(.55,2.1,regionRadius(u,v,paws[1-index]));
         const [pxShift,pyShift]=turn(u,v,px+rx*.74,py,-strength*.042,aspect);
-        dx+=weight*((pxShift+strength*.009)*recoil-reach*.006);
-        dy+=weight*((pyShift-strength*.009)*recoil+reach*.005);
+        dx+=weight*((pxShift+strength*.012)*recoil-reach*.006);
+        dy+=weight*((pyShift-strength*.011)*recoil+reach*.005);
       }
     }
     if(pose.chest>.001){
       const [cx,cy]=chest;
       const breathing=pose.chest*jointWeight(u,v,chest);
-      dx+=breathing*(u-cx)*.032;
-      dy+=breathing*((v-cy)*.055-.009);
+      dx+=breathing*(u-cx)*.044;
+      dy+=breathing*((v-cy)*.071-.016);
     }
     if(pose.side>.001){
       const lean=pose.side*jointWeight(u,v,side);
       dx+=lean*.003;
-      dy+=lean*.015;
+      dy+=lean*.021;
     }
     if(pose.furPress>.001){
       const distance=(u-pose.pressX)**2*1.8+(v-pose.pressY)**2*.65;
-      dy+=Math.exp(-distance*168)*pose.furPress*.015;
+      dy+=Math.exp(-distance*168)*pose.furPress*.018;
     }
     if(pose.back>.001){
       const nearby=((u-pose.touchX-.030)/.17)**2+((v-pose.touchY)/.15)**2;
@@ -550,7 +559,7 @@ export class DogScene{
         const along=Math.max(0,u-root.x),length=Math.max(.15,this.tailEdge-root.x);
         const axis=root.y+along*root.slope;
         const offset=(v-axis)*aspect;
-        const bend=(pose.tailCurl*1.12-pose.tailStraight*.135+pose.wag*.10)/length;
+        const bend=(pose.tailCurl*(root.bend??1.12)-pose.tailStraight*.135+pose.wag*.10)/length;
         if(along>0&&Math.abs(bend)>.001){
           const angle=bend*along,sin=Math.sin(angle),cos=Math.cos(angle);
           const across=v-axis;
@@ -653,15 +662,26 @@ export class DogScene{
     const b=this.bounds;
     const motion=this.reduce.matches?0:1;
     const {width:handWidth,height:handHeight}=this.handSize;
-    const handX=this.handPosition.x*this.width-handWidth*.24;
+    // Lead with the fingertips around the face so the palm leaves the eyes visible.
+    const faceHand=Number(faceZones.has(this.contact?zone:this.feedbackZone));
+    this.faceHand=motion?approach(this.faceHand,faceHand,26):faceHand;
+    const anchorX=.24-.045*this.faceHand,anchorY=.17-.085*this.faceHand;
+    const handScale=1-.16*this.faceHand;
+    const handAngle=this.dx*2*motion-38*this.faceHand;
+    const radians=handAngle*Math.PI/180;
+    const handX=this.handPosition.x*this.width-handWidth*anchorX;
     const give=this.contactForce*motion;
-    const handY=this.handPosition.y*this.height-handHeight*.17+this.furPress*b.h*.013*motion;
+    const contactY=this.handPosition.y*this.height+this.furPress*b.h*.016*motion;
+    const handY=contactY-handHeight*anchorY;
     // Extend only the sleeve so the fingers keep their scale and the arm exits the frame.
-    const sleeveLength=handHeight*.32;
-    const sleeveStretch=Math.max(1,(this.height-handY+8-handHeight*.68)/sleeveLength);
+    const down=Math.cos(radians);
+    const cuffY=contactY+handScale*(handWidth*(.65-anchorX)*Math.sin(radians)+handHeight*(.68-anchorY)*down);
+    const sleeveLength=handHeight*.32*handScale*down;
+    const sleeveMargin=handHeight*(.035+.09*this.faceHand);
+    const sleeveStretch=Math.max(1,(this.height-cuffY+sleeveMargin)/sleeveLength);
     this.hand.style.setProperty('--sleeve-stretch',sleeveStretch.toFixed(3));
-    const handAngle=this.reduce.matches?0:this.dx*2;
-    this.hand.style.transform=`translate3d(${handX}px,${handY}px,0) rotate(${handAngle}deg) scaleY(${1-give*.035})`;
+    this.hand.style.transformOrigin=`${anchorX*100}% ${anchorY*100}%`;
+    this.hand.style.transform=`translate3d(${handX}px,${handY}px,0) rotate(${handAngle}deg) scale(${handScale}) scaleY(${1-give*.035})`;
     this.hand.style.opacity=String(this.handAlpha);
     const {u:touchX,v:touchY}=this.furTouch??{u:.50,v:.52};
     const {u:pressX,v:pressY}=this.headTouch??{u:touchX,v:touchY};
@@ -684,6 +704,7 @@ export class DogScene{
       breath:Math.sin(time*1.35)*(.011+this.relax*.015)*motion,
       wag:Math.sin(this.tailPhase)*this.wag*motion*(1-.8*Math.max(this.tailStraight,this.tailCurl)),
       stretch:cue.stretch*motion,
+      earIndex:this.earIndex,
       ear:cue.ear*motion,
       earFold:cue.earFold*motion,
       sniff:cue.sniff*motion,
@@ -737,6 +758,7 @@ export class DogScene{
     if(this.stage.dataset.touchPaw!==pawFeedback)this.stage.dataset.touchPaw=pawFeedback;
     const localFeedback=feedback==='idle'?'idle':this.strokeTime>0&&coatActive?'brush':contactInk>.10?'touch':'idle';
     const behavior=this.action?cue.behavior
+      :motion&&this.gl&&headContact&&cue.blink>.60?'head-soften'
       :feedback==='head'&&this.furPress>.15?'fur-press'
       :!motion||!this.gl?localFeedback
       :feedback==='tail'&&pose.tailCurl>.16&&pose.tailCurl>pose.tailStraight?'tail-curl'
