@@ -1,5 +1,5 @@
-import {DogMotion} from './motion.js?v=natural-motion-3';
-import {dogRig} from './motion-rig.js?v=natural-motion-3';
+import {DogMotion} from './motion.js?v=rana-bichon-5';
+import {dogRig} from './motion-rig.js?v=rana-bichon-5';
 
 const clamp=(n,a=0,b=1)=>Math.max(a,Math.min(b,n));
 const smooth=(a,b,t)=>{const p=clamp((t-a)/(b-a));return p*p*(3-2*p);};
@@ -9,7 +9,8 @@ const tailRoot={
   cockapoo:{x:.83,y:.39},
   golden:{x:.77,y:.59},
   shiba:{x:.84,y:.35},
-  samoyed:{x:.74,y:.56}
+  samoyed:{x:.74,y:.56},
+  bichon:{x:.795,y:.52}
 };
 // Coordinates are measured on the transparent cutouts, so the same gestures
 // follow the dog's anatomy when the stage or proportions change.
@@ -18,9 +19,13 @@ const face={
   cockapoo:{head:[.224,.32],chin:[.272,.73]},
   golden:{head:[.263,.34],chin:[.135,.63]},
   shiba:{head:[.174,.34],chin:[.120,.63]},
-  samoyed:{head:[.171,.39],chin:[.127,.67]}
+  samoyed:{head:[.171,.39],chin:[.127,.67]},
+  bichon:{head:[.258,.350],chin:[.282,.681]}
 };
 const back=[.58,.40];
+// Keep nutrition-driven proportions in the torso so the face and paws retain
+// their shape even when a dog's body condition changes.
+const torso=(u)=>smooth(.34,.52,u)*(1-smooth(.73,.93,u));
 const propDuration={treat:1.90,meal:2.80,ball:2.55};
 const vertexShader=`attribute vec2 aPosition;attribute vec2 aUV;varying mediump vec2 vUV;void main(){vUV=aUV;gl_Position=vec4(aPosition,0.,1.);}`;
 const fragmentShader=`
@@ -129,7 +134,7 @@ export class DogScene{
     this.layout();
   }
   layout(){
-    const w=this.width*.91*this.size,h=w*(this.image?this.image.height/this.image.width:.5)*this.thickness;
+    const w=this.width*.91*this.size,h=w*(this.image?this.image.height/this.image.width:.5);
     this.bounds={x:(this.width-w)/2,y:this.height*.52-h*.5,w,h};
     const handWidth=clamp(this.width*.235,68,220);
     this.handSize={width:handWidth,height:handWidth*1.5};
@@ -182,6 +187,9 @@ export class DogScene{
     this.strokeTime=0;
     this.careTime=0;
     this.motionPending=0;
+    this.travelThisFrame=0;
+    this.brushPace=0;
+    this.comfort=0;
     this.action=null;
     if(this.prop)this.prop.dataset.visible='false';
   }
@@ -198,11 +206,13 @@ export class DogScene{
     return this.alpha[4*(Math.floor(v*100)*200+Math.floor(u*200))+3]>35;
   }
   gesturePoint(zone,phase=0){
-    const [u,v]=this.face[zone]??back;
-    const range=zone==='back'?.128:.028;
+    const [u,v]=zone==='ear'?this.rig.ear:this.face[zone]??back;
+    const range=zone==='back'?.128:zone==='ear'?.018:.028;
     return this.stageCoords(u+Math.sin(phase*4.1)*range,v+Math.sin(phase*3.1)*.015);
   }
   touchZone(u,v){
+    const [ex,ey,rx,ry]=this.rig.ear;
+    if(((u-ex)/rx)**2+((v-ey)/ry)**2<1)return 'ear';
     const {head:[hx,hy],chin:[cx,cy]}=this.face;
     if(u>Math.min(hx,cx)-.115&&u<Math.max(hx,cx)+.12){
       const divider=(hy+cy)/2;
@@ -222,7 +232,7 @@ export class DogScene{
     const zone=this.contact?this.touchZone(u,v):'idle';
     if(zone!==this.zone)this.stillTime=0;
     this.zone=zone;
-    if(!this.contact){this.motionPending=0;this.strokeTime=0;return;}
+    if(!this.contact){this.motionPending=0;this.travelThisFrame=0;this.strokeTime=0;return;}
     this.petTarget=this.target;
     if(!wasContact){
       if(this.handAlpha<.15){
@@ -237,7 +247,9 @@ export class DogScene{
     this.speed=Math.max(this.speed,clamp(distance*22));
     const moved=distance*widthRatio;
     this.motionPending+=moved;
-    this.accumulateTouch(Math.min(moved,.12)*(zone==='back'?1:.55));
+    this.travelThisFrame+=moved;
+    const paceWeight=1-.50*smooth(1.25,2.9,this.brushPace);
+    this.accumulateTouch(Math.min(moved,.12)*(zone==='back'?1:.55)*paceWeight);
   }
   press(x,y){
     this.point(x,y);
@@ -253,7 +265,7 @@ export class DogScene{
   }
   leave(){
     this.contact=false;this.speed=0;this.zone='idle';this.pressed=false;
-    this.stillTime=0;this.strokeTime=0;this.motionPending=0;
+    this.stillTime=0;this.strokeTime=0;this.motionPending=0;this.travelThisFrame=0;
   }
   takeCareTime(){
     const seconds=this.careTime;
@@ -300,6 +312,13 @@ export class DogScene{
     const pivot=Math.max(this.face.head[0],this.face.chin[0])+.106;
     const head=(1-smooth(pivot-.025,pivot+.115,u))*(1-.82*smooth(.63,.93,v));
     const shoulder=chest*(1-smooth(.42,.83,v));
+    const bodyShape=torso(u)*(v-.47)*(this.thickness-1);
+    let ear=0,earDirection=0;
+    if(Math.abs(pose.ear)>.001){
+      const [ex,ey,rx,ry,direction]=this.rig.ear;
+      ear=Math.exp(-(((u-ex)/(rx*1.20))**2+((v-ey)/(ry*1.15))**2))*pose.ear;
+      earDirection=direction;
+    }
     let paw=0;
     if(pose.stretch>.001&&u<.46&&v>.53){
       for(const [px,py,rx,ry] of this.rig.paws){
@@ -311,20 +330,27 @@ export class DogScene{
     const stretch=pose.stretch;
     return {
       x:x+w*(u+underHand*pose.shearX-head*(v-.45)*pose.headTurn*.52
-        -tail*(v-this.tail.y)*pose.wag*.034-stretch*(paw*.034+shoulder*.011)),
-      y:y+h*(v+underHand*pose.shearY+chest*(v-.47)*pose.breath
+        -tail*(v-this.tail.y)*pose.wag*.034-stretch*(paw*.034+shoulder*.011)+ear*.012*earDirection),
+      y:y+h*(v+bodyShape+underHand*pose.shearY+chest*(v-.47)*pose.breath
         +head*((u-pivot)*pose.headTurn*1.5-pose.headLift)
-        +tail*pose.wag*.063+stretch*(paw*.026-shoulder*.026))
+        +tail*pose.wag*.063+stretch*(paw*.026-shoulder*.026)-ear*.022)
     };
   }
   frame(now){
     if(!this.ready)return;
     const time=now/1000,dt=Math.min((now-this.last)/1000||.016,.05);this.last=now;
     const approach=(a,b,rate)=>a+(b-a)*(1-Math.exp(-dt*rate));
+    const traveled=this.travelThisFrame;
+    this.travelThisFrame=0;
+    this.brushPace=approach(this.brushPace,clamp(traveled/Math.max(dt,.010),0,5),9);
     const moved=this.motionPending>.006;
     if(moved){this.strokeTime=.21;this.stillTime=0;this.motionPending=0;}
     else this.motionPending*=Math.exp(-dt*10);
     this.strokeTime=Math.max(0,this.strokeTime-dt);
+    const strokingBack=this.contact&&this.zone==='back'&&this.strokeTime>0;
+    const gentle=smooth(.10,.32,this.brushPace)*(1-smooth(1.10,2.35,this.brushPace));
+    const comfortGain=strokingBack?Math.min(traveled,.065)*gentle*2:0;
+    this.comfort=clamp(this.comfort+comfortGain-dt*(strokingBack?.11:.30));
     if(this.contact&&this.pressed)this.stillTime+=dt;
     const resting=this.contact&&this.pressed&&this.zone!=='chin'&&this.stillTime>1.12;
     if(!this.action&&this.contact&&(this.strokeTime>0||(resting&&this.stillTime<6)))this.careTime+=dt;
@@ -338,7 +364,8 @@ export class DogScene{
         if(this.prop)this.prop.dataset.visible='false';
       }
     }
-    const cue=this.motion.step(dt,{zone:this.zone,contact:this.contact,resting,action:this.action,bond:this.bond});
+    const cue=this.motion.step(dt,{zone:this.zone,contact:this.contact,resting,action:this.action,bond:this.bond,
+      comfort:this.comfort,rubbing:this.strokeTime>0});
     this.pet=approach(this.pet,this.contact?1:0,this.contact?19:10);
     this.wag=approach(this.wag,Math.max(this.wagStrength,cue.tail),8);
     this.wagStrength*=Math.exp(-dt*1.1);
@@ -383,7 +410,8 @@ export class DogScene{
       headTurn:this.headTurn*motion,
       breath:Math.sin(time*1.35)*(.011+this.relax*.015)*motion,
       wag:Math.sin(this.tailPhase)*this.wag*motion,
-      stretch:cue.stretch*motion
+      stretch:cue.stretch*motion,
+      ear:(cue.ear??0)*motion
     };
     if(this.gl){
       const gl=this.gl;
@@ -400,7 +428,8 @@ export class DogScene{
         const v=u>this.tail.x?this.tail.y+.11:.5;
         const p=this.deform(u,v,pose);
         const next=this.deform((x+1)/strips,v,pose);
-        ctx.drawImage(this.image,x*sw,0,Math.min(sw+1,this.image.width-x*sw),this.image.height,p.x,p.y-v*b.h,Math.max(1,next.x-p.x+1),b.h);
+        const stripHeight=b.h*(1+torso(u)*(this.thickness-1));
+        ctx.drawImage(this.image,x*sw,0,Math.min(sw+1,this.image.width-x*sw),this.image.height,p.x,p.y-v*stripHeight,Math.max(1,next.x-p.x+1),stripHeight);
       }
     }
     this.stage.dataset.contact=String(this.contact);this.stage.dataset.wagging=String(this.wag>.1);

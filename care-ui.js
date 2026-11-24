@@ -1,4 +1,4 @@
-import {DogCare} from './care.js?v=pet-reactions-2';
+import {DogCare} from './care.js?v=rana-bichon-5';
 
 const messages={
   treat:'它嗅了嗅，把零食吃掉了。',
@@ -11,6 +11,7 @@ const saveUnavailable='当前浏览器暂时无法存档。';
 export function bindCare({scene}){
   const model=new DogCare();
   const status=document.querySelector('#care-status');
+  const growthStatus=document.querySelector('#growth-status');
   const meters=['affection','fullness'].map(key=>({
     key,
     bar:document.getElementById(key),
@@ -18,6 +19,7 @@ export function bindCare({scene}){
   }));
   let dog=null;
   let nextUpdate=0;
+  let appliedGrowth=null;
 
   function showStatus(message=''){
     const text=message||saveHint;
@@ -32,6 +34,12 @@ export function bindCare({scene}){
       if(text.textContent!==label)text.textContent=label;
     }
     scene.setBond(current.affection);
+    const growth=model.growth(dog);
+    if(!appliedGrowth||Math.abs(growth.size-appliedGrowth.size)>=.025||Math.abs(growth.width-appliedGrowth.width)>=.025){
+      scene.setProportions(growth.size,growth.width);
+      appliedGrowth={size:growth.size,width:growth.width};
+    }
+    if(growthStatus&&growthStatus.textContent!==growth.label)growthStatus.textContent=growth.label;
   }
 
   function act(kind){

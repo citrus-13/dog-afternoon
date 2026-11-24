@@ -1,23 +1,31 @@
-import {DogScene} from './scene.js?v=natural-motion-3';
+import {DogScene} from './scene.js?v=rana-bichon-5';
 import {DogSound} from './sound.js';
-import {bindCare} from './care-ui.js?v=pet-reactions-2';
+import {bindCare} from './care-ui.js?v=rana-bichon-5';
 
 const $=s=>document.querySelector(s);
 const stage=$('#stage'),viewer=$('#viewer'),notice=$('#notice');
-const theme=$('#theme'),soundButton=$('#sound'),expand=$('#expand'),panel=$('#proportions-panel'),adjust=$('#proportions-toggle');
-const size=$('#dog-size'),width=$('#dog-width'),buttons=[...document.querySelectorAll('[data-dog]')];
-const names={sheepdog:'灰白狗狗',cockapoo:'可卡布',golden:'金毛',shiba:'黑柴',samoyed:'萨摩耶'},images=new Map();
+const soundButton=$('#sound'),expand=$('#expand'),ambientPhase=$('#ambient-phase'),ambientTime=$('#ambient-time');
+const buttons=[...document.querySelectorAll('[data-dog]')];
+const names={sheepdog:'Rana · 古牧',cockapoo:'可卡布',golden:'金毛',shiba:'黑柴',samoyed:'萨摩耶',bichon:'比熊'},images=new Map();
 const sound=new DogSound();
 const heldKeys=new Map();
-let scene,selection='sheepdog',wanted='sheepdog',ticket=0,pointerId=null,key=null,loop=null,active=true,expandedFallback=false;
+let scene,selection='sheepdog',wanted='sheepdog',ticket=0,pointerId=null,key=null,loop=null,ambientTimer=null,active=true,expandedFallback=false;
 try{scene=new DogScene($('#scene'),stage,$('#hand'));}catch(error){$('#loading').textContent='画面暂时无法启动';$('#retry').hidden=false;console.error(error);}
 const announce=text=>{notice.textContent=text;};
 const care=scene?bindCare({scene}):null;
-function save(key,value){try{localStorage.setItem('pet-the-dog.'+key,JSON.stringify(value));}catch{}}
-function read(key,fallback){try{return JSON.parse(localStorage.getItem('pet-the-dog.'+key))??fallback;}catch{return fallback;}}
-function setTheme(){const dark=document.documentElement.dataset.theme==='dark';theme.setAttribute('aria-checked',String(dark));document.querySelector('meta[name="theme-color"]').content=dark?'#111d1a':'#f4efe6';}
-setTheme();
-theme.addEventListener('click',()=>{const next=document.documentElement.dataset.theme==='dark'?'light':'dark';document.documentElement.dataset.theme=next;try{localStorage.setItem('pet-the-dog.theme',next);}catch{}const url=new URL(location.href);if(url.searchParams.has('theme')){url.searchParams.set('theme',next);try{history.replaceState(null,'',url);}catch{}}setTheme();});
+function localDaypart(hour){return hour<6||hour>=20?'night':hour<8?'dawn':hour<17?'day':'dusk';}
+function updateAmbient(){
+  const now=new Date(),hour=now.getHours(),phase=localDaypart(hour);
+  const time=String(hour).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+  document.documentElement.dataset.daypart=phase;
+  document.documentElement.dataset.theme=phase==='night'?'dark':'light';
+  ambientPhase.textContent={dawn:'清晨',day:'白天',dusk:'傍晚',night:'夜间'}[phase];
+  ambientTime.textContent=time;ambientTime.dateTime=time;
+  document.querySelector('meta[name="theme-color"]').content=phase==='night'?'#111d1a':'#f4efe6';
+  clearTimeout(ambientTimer);ambientTimer=null;
+  if(!document.hidden)ambientTimer=setTimeout(updateAmbient,60000-now.getSeconds()*1000-now.getMilliseconds()+20);
+}
+updateAmbient();
 async function choose(id){
   if(!scene||!names[id])return;
   wanted=id;const current=++ticket;stage.setAttribute('aria-busy','true');$('#retry').hidden=true;
@@ -32,14 +40,7 @@ async function choose(id){
 }
 for(const b of buttons)b.addEventListener('click',()=>choose(b.dataset.dog));
 $('#retry').addEventListener('click',()=>scene&&!scene.contextLost?choose(wanted):location.reload());
-function updateSize(){if(!scene)return;scene.setProportions(size.value,width.value);save('proportions',{size:Number(size.value),width:Number(width.value)});}
-const stored=read('proportions',{size:5,width:5});
-size.value=String(Math.max(0,Math.min(10,Number(stored.size)||0)));width.value=String(Math.max(0,Math.min(10,Number(stored.width)||0)));updateSize();
-size.addEventListener('input',updateSize);width.addEventListener('input',updateSize);
-function closePanel(){panel.hidden=true;adjust.setAttribute('aria-expanded','false');}
-adjust.addEventListener('click',()=>{panel.hidden=!panel.hidden;adjust.setAttribute('aria-expanded',String(!panel.hidden));});
-document.addEventListener('pointerdown',e=>{if(!panel.contains(e.target)&&!adjust.contains(e.target))closePanel();});
-document.addEventListener('keydown',e=>{if(e.key==='Escape'){closePanel();if(expandedFallback)setFallback(false);}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&expandedFallback)setFallback(false);});
 soundButton.addEventListener('click',async()=>{soundButton.disabled=true;try{const enabled=await sound.setEnabled(soundButton.getAttribute('aria-checked')!=='true');soundButton.setAttribute('aria-checked',String(enabled));announce(enabled?'已开启合成呼吸声':'已关闭声音');}catch(error){soundButton.setAttribute('aria-checked','false');announce('当前浏览器暂时不能播放声音');console.error(error);}finally{soundButton.disabled=false;}});
 function syncExpanded(){const expanded=Boolean(document.fullscreenElement)||expandedFallback;expand.setAttribute('aria-pressed',String(expanded));expand.setAttribute('aria-label',expanded?'退出全屏':'全屏显示');expand.querySelector('use').setAttribute('href',expanded?'#exit':'#full');}
 function setFallback(value){expandedFallback=value;viewer.classList.toggle('is-expanded',value);document.body.classList.toggle('expanded',value);syncExpanded();}
@@ -70,7 +71,7 @@ stage.addEventListener('pointermove',e=>{
 function endPointer(e){if(e.pointerId===pointerId){pointerId=null;scene?.leave();}}
 stage.addEventListener('pointerup',endPointer);stage.addEventListener('pointercancel',endPointer);stage.addEventListener('lostpointercapture',endPointer);
 stage.addEventListener('pointerleave',()=>{if(pointerId===null&&!key)scene?.leave();});
-function keyGesture(event){return {' ':'back',Enter:'back',h:'head',j:'chin',t:'tail'}[event.key==='Enter'?'Enter':event.key.toLowerCase()];}
+function keyGesture(event){return {' ':'back',Enter:'back',h:'head',e:'ear',j:'chin',t:'tail'}[event.key==='Enter'?'Enter':event.key.toLowerCase()];}
 function startKey(next){
   key=next;scene.leave();
   if(!key)return;
@@ -85,7 +86,7 @@ stage.addEventListener('keydown',e=>{
   const id=e.code||e.key.toLowerCase();
   if(heldKeys.has(id))return;
   const next={id,type,start:performance.now()};heldKeys.set(id,next);startKey(next);
-  announce({head:'正在轻轻摸额头',chin:'正在轻挠下巴',back:'正在慢慢顺背毛',tail:'狗狗开心地摇摇尾巴'}[type]);
+  announce({head:'正在轻轻摸额头',ear:'正在轻挠耳朵',chin:'正在轻挠下巴',back:'正在慢慢顺背毛',tail:'狗狗开心地摇摇尾巴'}[type]);
 });
 stage.addEventListener('keyup',e=>{
   const id=e.code||e.key.toLowerCase();
@@ -102,7 +103,7 @@ function frame(now){
   }
   loop=requestAnimationFrame(frame);
 }
-document.addEventListener('visibilitychange',()=>{active=!document.hidden;if(!active){clearInput();cancelAnimationFrame(loop);}else loop=requestAnimationFrame(frame);});
-window.addEventListener('pagehide',e=>{active=false;clearInput();cancelAnimationFrame(loop);if(!e.persisted){sound.destroy();scene?.destroy();}});
-window.addEventListener('pageshow',e=>{if(e.persisted){active=true;scene?.resize();cancelAnimationFrame(loop);loop=requestAnimationFrame(frame);}});
+document.addEventListener('visibilitychange',()=>{active=!document.hidden;updateAmbient();if(!active){clearInput();cancelAnimationFrame(loop);}else loop=requestAnimationFrame(frame);});
+window.addEventListener('pagehide',e=>{active=false;clearTimeout(ambientTimer);ambientTimer=null;clearInput();cancelAnimationFrame(loop);if(!e.persisted){sound.destroy();scene?.destroy();}});
+window.addEventListener('pageshow',e=>{updateAmbient();if(e.persisted){active=true;scene?.resize();cancelAnimationFrame(loop);loop=requestAnimationFrame(frame);}});
 if(scene){const requested=new URLSearchParams(location.search).get('dog');choose(names[requested]?requested:'sheepdog');loop=requestAnimationFrame(frame);}

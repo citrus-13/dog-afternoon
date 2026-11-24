@@ -90,6 +90,8 @@ main { width: min(100%, 1376px); margin: auto; padding: clamp(16px, 3vw, 44px); 
 }
 #hand { position: absolute; top: 0; left: 0; z-index: 3; opacity: 0; pointer-events: none; transform-origin: 24% 17%; filter: drop-shadow(1px 2px 2px var(--contact-shadow)); }
 #moonlight { z-index: 4; opacity: 0; mix-blend-mode: multiply; background: linear-gradient(127deg, #c1d4dc, #425c78); transition: opacity .4s; }
+html[data-daypart=dawn] #moonlight { opacity: .16; background: linear-gradient(127deg, #f3dfbf, #b5cad8); }
+html[data-daypart=dusk] #moonlight { opacity: .24; background: linear-gradient(127deg, #ebbd93, #a9b2ca); }
 html[data-theme=dark] #moonlight { opacity: 1; }
 #stage[data-ready=true] #scene { opacity: 1; }
 #stage[data-ready=true] #loading { visibility: hidden; }
@@ -101,7 +103,9 @@ html[data-theme=dark] #moonlight { opacity: 1; }
 button { font: inherit; color: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 button[hidden], [hidden] { display: none !important; }
 button:focus-visible, #stage:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
-.dog-choice { min-width: 0; min-height: 48px; display: flex; align-items: center; gap: 9px; padding: 5px 8px; text-align: left; border: 1px solid transparent; border-radius: 11px; background: transparent; font-size: 14px; }
+.dog-choice { min-width: 0; min-height: 48px; display: flex; align-items: center; gap: 9px; padding: 5px 8px; text-align: left; border: 1px solid transparent; border-radius: 11px; background: transparent; font-size: 14px; line-height: 1.3; }
+.dog-name { min-width: 0; }
+.dog-breed { white-space: nowrap; }
 .dog-choice:hover, .tool:hover { background: var(--active); }
 .dog-choice[aria-pressed=true] { color: var(--accent); background: var(--active); border-color: var(--line); font-weight: 700; }
 .coat { flex: 0 0 35px; height: 35px; background-color: #cad9c7; background-repeat: no-repeat; background-size: 460% 240%; background-position: 28% 54%; border-radius: 8px; }
@@ -110,16 +114,15 @@ button:focus-visible, #stage:focus-visible { outline: 3px solid var(--accent); o
 .coat-golden { background-image: url('./assets/golden.webp'); background-position: 21% 58%; }
 .coat-shiba { background-image: url('./assets/shiba.webp'); background-position: 23% 56%; }
 .coat-samoyed { background-image: url('./assets/samoyed.webp'); background-position: 23% 61%; }
+.coat-bichon { background-image: url('./assets/bichon.webp'); background-position: 18% 54%; }
 .tools { position: relative; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; border-top: 1px solid var(--line); padding-top: 12px; }
+.ambient { grid-column: 1 / -1; display: flex; justify-content: center; align-items: center; gap: 8px; min-width: 0; min-height: 28px; color: var(--muted); font-size: 13px; white-space: nowrap; }
+.ambient time { color: var(--ink); font-variant-numeric: tabular-nums; }
 .tool { display: flex; justify-content: center; align-items: center; gap: 4px; min-height: 43px; padding: 5px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; font-size: 13px; white-space: nowrap; }
-.tool[aria-checked=true], .tool[aria-expanded=true] { background: var(--active); }
+.tool[aria-checked=true] { background: var(--active); }
 .tool svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
-.tool .sun, .tool .waves, html[data-theme=dark] .tool .moon, #sound[aria-checked=true] .muted { display: none; }
-html[data-theme=dark] .tool .sun, #sound[aria-checked=true] .waves { display: inline; }
-#proportions-panel { position: absolute; z-index: 8; inset: auto 0 calc(100% + 6px) 0; padding: 11px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 7px 22px #18291c26; }
-#proportions-panel label { display: flex; align-items: center; gap: 6px; font-size: 14px; white-space: nowrap; }
-#proportions-panel label + label { margin-top: 8px; }
-#proportions-panel input { width: 100%; min-width: 0; accent-color: var(--accent); }
+.tool .waves, #sound[aria-checked=true] .muted { display: none; }
+#sound[aria-checked=true] .waves { display: inline; }
 .care { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 18px; background: var(--panel); }
 .care-meters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .care-meter { min-width: 0; }
@@ -132,7 +135,8 @@ html[data-theme=dark] .tool .sun, #sound[aria-checked=true] .waves { display: in
 .care-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
 .care-actions button { min-width: 0; min-height: 44px; padding: 6px 3px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); font-size: 13px; white-space: nowrap; touch-action: manipulation; }
 .care-actions button:hover { background: var(--active); }
-#care-status { min-height: 1.5em; margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+#growth-status, #care-status { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+#care-status { min-height: 1.5em; }
 .hint { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: 14px; line-height: 1.6; }
 .keyboard-hint { display: inline-block; margin-left: 8px; }
 .touch-hint { display: none; }
@@ -150,10 +154,12 @@ body.expanded { overflow: hidden; }
   #stage { border-radius: 14px; }
   .sidebar { gap: 10px; }
   .toolbar { gap: 8px; padding: 7px; }
-  .choices { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 2px; }
-  .dog-choice { flex-direction: column; justify-content: center; align-items: center; gap: 3px; padding: 4px 1px; font-size: 13px; text-align: center; }
+  .choices { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 2px; }
+  .dog-choice { flex-direction: column; justify-content: flex-start; align-items: center; gap: 3px; padding: 4px 1px; font-size: 13px; text-align: center; }
+  .dog-breed { display: block; font-size: 11px; }
   .coat { flex: 0 0 32px; width: 32px; }
-  .tools { grid-template-columns: repeat(4, minmax(0, 1fr)); padding-top: 7px; gap: 4px; }
+  .tools { grid-template-columns: repeat(3, minmax(0, 1fr)); padding-top: 7px; gap: 4px; }
+  .ambient { grid-column: auto; gap: 6px; min-height: 43px; }
   .care { padding: 10px; }
   .care-meters { gap: 16px; }
   .desktop-hint { display: none; }

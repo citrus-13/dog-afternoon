@@ -2,25 +2,76 @@ const STORAGE_KEY = 'pet-the-dog.care';
 const FULLNESS_LIFETIME_MS = 18 * 60 * 60 * 1000;
 const SAVE_INTERVAL_MS = 10_000;
 const PLAY_COOLDOWN_MS = 15_000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const SIZE_RESPONSE_DAYS = 3;
+const CONDITION_RESPONSE_DAYS = 3.2;
 const MAX_DOGS = 64;
 const finite = value => typeof value === 'number' && Number.isFinite(value);
 const bounded = (value, fallback) => finite(value) ? Math.max(0, Math.min(100, value)) : fallback;
+const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
+const timestamp = value => finite(value) && value >= 0 && value <= Number.MAX_SAFE_INTEGER;
 const validId = id => typeof id === 'string' && /^[a-z0-9][a-z0-9_-]{0,47}$/i.test(id);
-const fresh = now => ({ affection: 0, fullness: 46, updatedAt: now, lastPlayAt: null });
+// Keep the last persisted growth checkpoint out of the public/storage schema.
+const checkpoint = (state, at = -1) => Object.defineProperty(state, '_growthCheckpoint', { value: at, writable: true });
+const fresh = now => checkpoint({
+  affection: 0, fullness: 46, updatedAt: now, lastPlayAt: null,
+  adoptedAt: now, growthUpdatedAt: now, bodySize: 5, bodyCondition: 0,
+});
 const view = state => ({
   affection: Math.floor(state.affection + 1e-8),
   fullness: Math.max(0, Math.ceil(state.fullness - 1e-8)),
 });
 
-// Fullness alone changes while away. Affection is never deducted for absence.
+// Integrate the fullness history, including its linear decay to zero. The
+// exponential response to a linear target is analytic, so frequent reads and
+// one delayed read produce the same body condition. Actions never resize a dog.
+function advanceGrowth(state, now) {
+  const start = Math.max(state.growthUpdatedAt, state.updatedAt);
+  const days = clamp((now - start) / DAY_MS, 0, 3650);
+  const wasSize = state.bodySize, wasCondition = state.bodyCondition;
+  if (days > 0) {
+    const drain = 100 * DAY_MS / FULLNESS_LIFETIME_MS;
+    const fullness = Math.max(0, state.fullness - drain * (start - state.updatedAt) / DAY_MS);
+    const fed = Math.min(days, fullness / drain);
+    const nourishment = .25 * fed + .75 * (fullness * fed - .5 * drain * fed * fed) / 100;
+    const potential = 5 + 1.2 * (1 - Math.exp(-state.affection / 28));
+    state.bodySize += Math.max(0, potential - state.bodySize) * -Math.expm1(-nourishment / SIZE_RESPONSE_DAYS);
+    const tau = CONDITION_RESPONSE_DAYS, blend = -Math.expm1(-fed / tau);
+    const target = .7 * (fullness - 50) / 50, slope = -.7 * drain / 50;
+    state.bodyCondition = state.bodyCondition * (1 - blend) + target * blend + slope * (fed - tau * blend);
+    state.bodyCondition += (-.7 - state.bodyCondition) * -Math.expm1(-(days - fed) / tau);
+    state.bodySize = clamp(state.bodySize, 5, 6.2);
+    state.bodyCondition = clamp(state.bodyCondition, -.7, .7);
+  }
+  state.growthUpdatedAt = now;
+  return Math.abs(state.bodySize - wasSize) > 1e-10 || Math.abs(state.bodyCondition - wasCondition) > 1e-10;
+}
+
+const growthView = (state, now) => {
+  const days = Math.max(0, (now - state.adoptedAt) / DAY_MS);
+  const condition = state.bodyCondition < -.28 ? '体态轻盈' : state.bodyCondition > .25 ? '圆润一点' : '体态匀称';
+  return { size: state.bodySize, width: 5 + state.bodyCondition, adoptedAt: state.adoptedAt, days,
+    label: `相伴第 ${Math.floor(days) + 1} 天 · ${condition}` };
+};
+
+// Unsaved food is an increment over a decaying baseline, not a fresh meal on
+// every retry. Both channels age together so hunger is never counted twice.
+function pendingFullness(pending, now) {
+  if (!pending?.fullness || !timestamp(pending.fullnessAt)) return 0;
+  const consumed = 100 * clamp(now - pending.fullnessAt, 0, FULLNESS_LIFETIME_MS) / FULLNESS_LIFETIME_MS;
+  return Math.max(0, pending.fullnessBase + pending.fullness - consumed) - Math.max(0, pending.fullnessBase - consumed);
+}
+
+// Affection is never deducted for absence. Body changes remain slow and bounded.
 function advance(state, now) {
+  const growthChanged = advanceGrowth(state, now);
   const elapsed = Math.max(0, Math.min(FULLNESS_LIFETIME_MS, now - state.updatedAt));
   const before = state.fullness;
   state.fullness = Math.max(0, state.fullness - 100 * elapsed / FULLNESS_LIFETIME_MS);
   // Re-anchor a clock rollback once; it cannot refill a dog or freeze it for days.
   state.updatedAt = now;
   if (state.lastPlayAt !== null && state.lastPlayAt > now) state.lastPlayAt = now;
-  return before !== state.fullness;
+  return before !== state.fullness || growthChanged;
 }
 
 export class DogCare {
@@ -61,6 +112,13 @@ export class DogCare {
     return view(state ?? fresh(now));
   }
 
+  growth(id) {
+    const now = this._now();
+    const state = this._destroyed ? this._states.get(id) : this._entry(id, now);
+    if (!this._destroyed) this._save(false, now);
+    return growthView(state ?? fresh(now), now);
+  }
+
   pet(id, seconds) {
     if (this._destroyed || !finite(seconds) || seconds < 0) return;
     const now = this._now();
@@ -86,8 +144,11 @@ export class DogCare {
       this._save(false, now);
       return false;
     }
+    const pending = this._pendingFor(id), carry = pendingFullness(pending, now);
+    pending.fullnessBase = Math.max(0, state.fullness - carry);
+    pending.fullnessAt = now;
+    pending.fullness = carry + amount;
     state.fullness = Math.min(100, state.fullness + amount);
-    this._pendingFor(id).fullness += amount;
     this._creditAffection(id, state, kind === 'treat' ? 2 : 4);
     this._dirty = true;
     this._save(true, now);
@@ -140,7 +201,7 @@ export class DogCare {
       this._states.set(id, state);
       this._dirty = true;
     }
-    if (state.updatedAt > now || (state.lastPlayAt !== null && state.lastPlayAt > now)) {
+    if (state.updatedAt > now || state.growthUpdatedAt > now || (state.lastPlayAt !== null && state.lastPlayAt > now)) {
       this._repairClock = this._dirty = true;
     }
     if (advance(state, now)) this._dirty = true;
@@ -149,7 +210,7 @@ export class DogCare {
   }
 
   _pendingFor(id) {
-    if (!this._pending.has(id)) this._pending.set(id, { affection: 0, fullness: 0 });
+    if (!this._pending.has(id)) this._pending.set(id, { affection: 0, fullness: 0, fullnessBase: 0, fullnessAt: null });
     return this._pending.get(id);
   }
 
@@ -171,12 +232,13 @@ export class DogCare {
     let saved;
     try { saved = JSON.parse(raw); } catch { return new Map(); }
     if (!saved || typeof saved !== 'object' || Array.isArray(saved)) return new Map();
-    if (saved.version !== undefined && saved.version !== 0 && saved.version !== 1) {
+    if (saved.version !== undefined && saved.version !== 0 && saved.version !== 1 && saved.version !== 2) {
       // Leave a future/incompatible format intact instead of overwriting it.
       this._foreignSchema = true;
       this._canSave = false;
       return null;
     }
+    if (saved.version !== 2) this._dirty = true;
     // Also read unversioned { dogs: {...} } and legacy bare per-dog maps.
     const dogs = saved.dogs ?? saved;
     if (!dogs || typeof dogs !== 'object' || Array.isArray(dogs)) return new Map();
@@ -185,15 +247,21 @@ export class DogCare {
       if (result.size >= MAX_DOGS) break;
       if (!validId(id) || !record || typeof record !== 'object' || Array.isArray(record)) continue;
       if (!finite(record.affection) && !finite(record.fullness)) continue;
-      if ((finite(record.updatedAt) && record.updatedAt > now) || (finite(record.lastPlayAt) && record.lastPlayAt > now)) {
+      if ((finite(record.updatedAt) && record.updatedAt > now) || (finite(record.growthUpdatedAt) && record.growthUpdatedAt > now) || (finite(record.lastPlayAt) && record.lastPlayAt > now)) {
         this._repairClock = this._dirty = true;
       }
-      const state = {
+      const hasGrowth = timestamp(record.adoptedAt) && timestamp(record.growthUpdatedAt) && finite(record.bodySize) && finite(record.bodyCondition);
+      if (!hasGrowth) this._dirty = true;
+      const state = checkpoint({
         affection: bounded(record.affection, 0),
         fullness: bounded(record.fullness, 46),
         updatedAt: finite(record.updatedAt) && record.updatedAt >= 0 ? Math.min(now, record.updatedAt) : now,
         lastPlayAt: finite(record.lastPlayAt) && record.lastPlayAt >= 0 ? Math.min(now, record.lastPlayAt) : null,
-      };
+        adoptedAt: timestamp(record.adoptedAt) ? record.adoptedAt : now,
+        growthUpdatedAt: hasGrowth ? Math.min(now, record.growthUpdatedAt) : now,
+        bodySize: hasGrowth ? clamp(record.bodySize, 5, 6.2) : 5,
+        bodyCondition: hasGrowth ? clamp(record.bodyCondition, -.7, .7) : 0,
+      }, hasGrowth ? Math.min(now, record.growthUpdatedAt) : -1);
       advance(state, now);
       result.set(id, state);
     }
@@ -210,11 +278,24 @@ export class DogCare {
         continue;
       }
       advance(local, now);
+      // Size cannot shrink or double-count elapsed days across tabs. Prefer a
+      // newer saved condition history over one extrapolated by a stale tab.
+      local.adoptedAt = Math.min(local.adoptedAt, incoming.adoptedAt);
+      local.bodySize = Math.max(local.bodySize, incoming.bodySize);
+      if (incoming._growthCheckpoint > local._growthCheckpoint) {
+        local.bodyCondition = incoming.bodyCondition;
+        local._growthCheckpoint = incoming._growthCheckpoint;
+      }
       const pending = this._pending.get(id);
       // Retain unsaved local increments while incorporating other tabs. All
       // fullness values are first moved to the same clock instant.
       local.affection = Math.min(100, Math.max(local.affection, incoming.affection + (pending?.affection ?? 0)));
-      local.fullness = Math.min(100, incoming.fullness + (pending?.fullness ?? 0));
+      local.fullness = Math.min(100, incoming.fullness + pendingFullness(pending, now));
+      if (pending?.fullness) {
+        pending.fullness = local.fullness - incoming.fullness;
+        pending.fullnessBase = incoming.fullness;
+        pending.fullnessAt = now;
+      }
       if (incoming.lastPlayAt !== null) local.lastPlayAt = Math.max(local.lastPlayAt ?? 0, incoming.lastPlayAt);
     }
     return true;
@@ -228,7 +309,8 @@ export class DogCare {
     if (!this._mergeStored(now)) return;
     const dogs = Object.fromEntries(this._states);
     try {
-      this._storage.setItem(STORAGE_KEY, JSON.stringify({ version: 1, dogs }));
+      this._storage.setItem(STORAGE_KEY, JSON.stringify({ version: 2, dogs }));
+      for (const state of this._states.values()) state._growthCheckpoint = state.growthUpdatedAt;
       this._pending.clear();
       this._dirty = false;
       this._repairClock = false;
