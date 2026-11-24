@@ -1,7 +1,7 @@
-import {DogScene} from './scene.js?v=expression-15';
-import {DogSound} from './sound.js?v=bernese-13';
-import {bindCare} from './care-ui.js?v=rana-bichon-5';
-import {bindHaptics} from './haptics.js?v=bernese-13';
+import {DogScene} from './scene.js?v=companion-16';
+import {DogSound} from './sound.js?v=companion-16';
+import {bindCare} from './care-ui.js?v=companion-16';
+import {bindHaptics} from './haptics.js?v=companion-16';
 
 const $=s=>document.querySelector(s);
 const stage=$('#stage'),viewer=$('#viewer'),notice=$('#notice');
@@ -25,10 +25,10 @@ const touchResponses={
   tail:{'tail-straight':'顺着手舒展开','tail-curl':'往里轻轻卷起来',tail:'轻摆一下'},
 };
 let feedbackKey='',feedbackUntil=0,feedbackVisible=false;
-let scene,selection='sheepdog',wanted='sheepdog',ticket=0,pointerId=null,key=null,loop=null,ambientTimer=null,active=true,expandedFallback=false;
+let scene,wanted='sheepdog',ticket=0,pointerId=null,key=null,loop=null,ambientTimer=null,active=true,expandedFallback=false;
 try{scene=new DogScene($('#scene'),stage,$('#hand'));}catch(error){$('#loading').textContent='画面暂时无法启动';$('#retry').hidden=false;console.error(error);}
 const announce=text=>{notice.textContent=text;};
-const care=scene?bindCare({scene}):null;
+const care=scene?bindCare({scene,isSelecting:()=>stage.hasAttribute('aria-busy')}):null;
 function localDaypart(hour){return hour<6||hour>=20?'night':hour<8?'dawn':hour<17?'day':'dusk';}
 function updateAmbient(){
   const now=new Date(),hour=now.getHours(),phase=localDaypart(hour);
@@ -50,6 +50,7 @@ function showTouchFeedback(visible){
 function resetTouchFeedback(){feedbackKey='';feedbackUntil=0;showTouchFeedback(false);}
 function touchCaption(zone,behavior){
   const responses=touchResponses[zone];
+  if(behavior==='look-back')return touchLabels[zone]+' · 偏过头来找你的手';
   if(behavior==='exhale')return touchLabels[zone]+' · 呼了口气，肩膀落下来';
   if(behavior==='nuzzle')return touchLabels[zone]+' · 伸了伸脖子，往手边蹭';
   if(behavior==='touch')return touchLabels[zone]+' · 轻触了一下';
@@ -73,7 +74,9 @@ function updateTouchFeedback(now){
   showTouchFeedback(now<feedbackUntil);
 }
 async function choose(id){
-  if(!scene||!names[id])return;
+  if(!scene||!Object.hasOwn(names,id))return;
+  if(scene.ready&&stage.dataset.selected===id&&wanted===id&&!stage.dataset.loadError)return;
+  clearInput();delete stage.dataset.loadError;
   wanted=id;const current=++ticket;stage.setAttribute('aria-busy','true');$('#retry').hidden=true;
   try{
     let img=images.get(id);
@@ -83,10 +86,17 @@ async function choose(id){
       images.set(id,img);
     }
     if(current!==ticket)return;
-    selection=id;scene.setImage(img,id);resetTouchFeedback();care?.selectDog(id);stage.dataset.ready='true';stage.dataset.selected=id;stage.setAttribute('aria-label',`抚摸${names[id]}`);
+    care?.flushPet();
+    scene.setImage(img,id);resetTouchFeedback();care?.selectDog(id);stage.dataset.ready='true';stage.dataset.selected=id;stage.setAttribute('aria-label',`抚摸${names[id]}`);
     for(const b of buttons)b.setAttribute('aria-pressed',String(b.dataset.dog===id));
+    try{localStorage.setItem('pet-the-dog.selected',id);}catch{}
+    const url=new URL(location.href);
+    if(url.searchParams.get('dog')!==id){
+      url.searchParams.set('dog',id);
+      try{history.replaceState(history.state,'',url);}catch{}
+    }
     announce(`已选择${names[id]}`);
-  }catch(error){if(current!==ticket)return;$('#loading').textContent='狗狗没有加载好';$('#retry').hidden=false;announce('加载失败，请重试');console.error(error);}
+  }catch(error){if(current!==ticket)return;stage.dataset.loadError='true';$('#loading').textContent='狗狗没有加载好';$('#retry').hidden=false;announce('加载失败，请重试');console.error(error);}
   finally{if(current===ticket)stage.removeAttribute('aria-busy');}
 }
 for(const b of buttons)b.addEventListener('click',()=>choose(b.dataset.dog));
@@ -117,7 +127,7 @@ function clearInput(){
   haptics.cancel();scene?.leave();resetTouchFeedback();
 }
 stage.addEventListener('pointerdown',e=>{
-  if(!scene||e.target.closest('button')||e.isPrimary===false||pointerId!==null)return;
+  if(!scene||stage.hasAttribute?.('aria-busy')||e.target.closest('button')||e.isPrimary===false||pointerId!==null)return;
   if(e.pointerType!=='touch'&&e.button!==0)return;
   clearKeys();scene.leave();pointerId=e.pointerId;
   const p=pointerPosition(e);scene.press(p.x,p.y,pointerPressure(e));haptics.press(e,scene);e.preventDefault();
@@ -127,6 +137,16 @@ stage.addEventListener('pointerdown',e=>{
 stage.addEventListener('pointermove',e=>{
   if(!scene||key||e.target.closest('button'))return;
   if(pointerId!==null?e.pointerId!==pointerId:e.pointerType!=='mouse')return;
+  // Preserve direction changes in a short mobile rub even when the browser
+  // delivers several samples together. Bound the work on high-rate pens.
+  const samples=pointerId!==null?e.getCoalescedEvents?.():null;
+  if(samples?.length>1){
+    const stride=Math.ceil(samples.length/6);
+    for(let i=0;i<samples.length-1;i+=stride){
+      const sample=samples[i],p=pointerPosition(sample);
+      scene.point(p.x,p.y,pointerPressure(sample));
+    }
+  }
   const p=pointerPosition(e);scene.point(p.x,p.y,pointerPressure(e));haptics.point(e,scene);
 });
 function endPointer(e){if(e.pointerId===pointerId){pointerId=null;haptics.end(e,scene);scene?.leave();}}
@@ -137,7 +157,7 @@ function keyGesture(event){return {' ':'back',Enter:'back',h:'head',e:'ear',j:'c
 function startKey(next){
   key=next;scene.leave();
   if(!key)return;
-  const p=scene.gesturePoint(key.type,(performance.now()-key.start)/1000);
+  const p=scene.gesturePoint(key.type,(performance.now()-key.start)/1000,key.other);
   scene.press(p.x,p.y,undefined,key.tailDirection);
 }
 stage.addEventListener('keydown',e=>{
@@ -146,7 +166,7 @@ stage.addEventListener('keydown',e=>{
   e.preventDefault();if(e.repeat||pointerId!==null)return;
   const id=e.code||e.key.toLowerCase();
   if(heldKeys.has(id))return;
-  const next={id,type,start:performance.now(),tailDirection:type==='tail'?(e.shiftKey?-1:1):0};
+  const next={id,type,other:e.shiftKey&&(type==='ear'||type==='paw'),start:performance.now(),tailDirection:type==='tail'?(e.shiftKey?-1:1):0};
   heldKeys.set(id,next);startKey(next);
   announce({head:'正在轻轻摸额头',ear:'正在轻挠耳朵',chin:'正在轻挠下巴',nose:'正在轻碰鼻尖',paw:'正在轻碰前爪',chest:'正在轻抚胸口',side:'正在轻抚身侧',back:'正在慢慢顺背毛',tail:'正在顺着尾巴轻轻抚摸'}[type]);
 });
@@ -160,12 +180,18 @@ stage.addEventListener('blur',clearInput);
 window.addEventListener('blur',clearInput);
 function frame(now){
   if(active&&scene){
-    if(key){const p=scene.gesturePoint(key.type,(now-key.start)/1000);scene.point(p.x,p.y);}
-    scene.frame(now);updateTouchFeedback(now);care?.update(now);sound.update(scene.pet,scene.speed,now/1000,{zone:scene.zone,pressure:scene.contactForce,tap:scene.pat});
+    if(key){const p=scene.gesturePoint(key.type,(now-key.start)/1000,key.other);scene.point(p.x,p.y);}
+    scene.frame(now);updateTouchFeedback(now);care?.update(now);sound.update(scene.pet,scene.speed,now/1000,{zone:scene.zone,pressure:scene.contactForce,tap:scene.pat,breathPhase:scene.breathPhase,exhale:scene.exhale,sniff:scene.sniffBreath});
   }
   loop=requestAnimationFrame(frame);
 }
-document.addEventListener('visibilitychange',()=>{active=!document.hidden;updateAmbient();if(!active){clearInput();cancelAnimationFrame(loop);}else loop=requestAnimationFrame(frame);});
+document.addEventListener('visibilitychange',()=>{active=!document.hidden;updateAmbient();if(!active){care?.flushPet();clearInput();cancelAnimationFrame(loop);}else loop=requestAnimationFrame(frame);});
 window.addEventListener('pagehide',e=>{active=false;clearTimeout(ambientTimer);ambientTimer=null;clearInput();cancelAnimationFrame(loop);if(!e.persisted){sound.destroy();scene?.destroy();}});
 window.addEventListener('pageshow',e=>{updateAmbient();if(e.persisted){active=true;scene?.resize();cancelAnimationFrame(loop);loop=requestAnimationFrame(frame);}});
-if(scene){const requested=new URLSearchParams(location.search).get('dog');choose(names[requested]?requested:'sheepdog');loop=requestAnimationFrame(frame);}
+if(scene){
+  const requested=new URLSearchParams(location.search).get('dog');
+  let saved;
+  try{saved=localStorage.getItem('pet-the-dog.selected');}catch{}
+  choose(Object.hasOwn(names,requested)?requested:Object.hasOwn(names,saved)?saved:'sheepdog');
+  loop=requestAnimationFrame(frame);
+}

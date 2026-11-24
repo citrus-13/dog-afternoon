@@ -3,6 +3,7 @@
 // are clockwise radians in image pixel axes (x right, y down).
 // Profile dogs already have closed eyes, so their rigs follow the narrow lid.
 // Each ear is [center x, center y, radius x, radius y, outward direction].
+// Pile scales contact depth and recovery for the coat visible in each cutout.
 // Touch ellipses are [center x, center y, radius x, radius y] on visible texture.
 // Side/chest targets leave the keyboard back stroke (u .452-.708, v .40) clear.
 // Rana's body sits at (20, 80) on the 1920 × 960 tail composite.
@@ -21,6 +22,8 @@ export const dogRig = {
       [0.28125, 0.89, 0.06875, 0.0475],
     ].map(placeRana),
     ear: placeRana([.115,.609,.055,.131,-1]),
+    secondEar: [.361,.529,.028,.091,1],
+    pile:1.13,
     touch: {
       nose: placeRana([.313,.757,.032,.047]),
       chest: placeRana([.448,.692,.062,.095]),
@@ -38,6 +41,8 @@ export const dogRig = {
       [0.284375, 0.84375, 0.068125, 0.03625],
     ],
     ear: [.105,.617,.051,.141,-1],
+    secondEar: [.418,.588,.052,.123,1],
+    pile:1.06,
     touch: {
       nose: [.274,.715,.028,.045],
       chest: [.445,.640,.047,.090],
@@ -52,6 +57,7 @@ export const dogRig = {
       [0.1575, 0.68875, 0.053125, 0.0425],
     ],
     ear: [.279,.523,.059,.112,1],
+    pile:.94,
     touch: {
       nose: [.088,.596,.019,.028],
       chest: [.370,.598,.060,.085],
@@ -60,6 +66,7 @@ export const dogRig = {
     },
   },
   shiba: {
+    forehead:[.135,.447],
     uprightEar: true,
     eyes: [[0.133125, 0.6, 0.018125, 0.00875, 0.24]],
     paws: [
@@ -67,6 +74,8 @@ export const dogRig = {
       [0.17125, 0.7825, 0.04875, 0.035],
     ],
     ear: [.218,.463,.041,.081,1],
+    secondEar: [.144,.304,.038,.075,-1],
+    pile:.74,
     touch: {
       nose: [.045,.678,.021,.031],
       chest: [.326,.653,.065,.076],
@@ -75,10 +84,13 @@ export const dogRig = {
     },
   },
   samoyed: {
+    forehead:[.152,.458],
     uprightEar: true,
     eyes: [[0.12875, 0.635, 0.015625, 0.0075, 0.24]],
     paws: [[0.109375, 0.7825, 0.051875, 0.0375]],
     ear: [.225,.552,.044,.101,1],
+    secondEar: [.132,.320,.037,.065,-1],
+    pile:1.15,
     touch: {
       nose: [.052,.697,.018,.024],
       chest: [.326,.658,.059,.094],
@@ -90,6 +102,8 @@ export const dogRig = {
     eyes: [[.227,.515,.017,.020,.05],[.310,.476,.015,.019,-.09]],
     paws: [[.123,.763,.047,.051],[.226,.787,.062,.042]],
     ear: [.153,.574,.047,.122,-1],
+    secondEar: [.367,.529,.043,.095,1],
+    pile:1.09,
     touch: {
       nose: [.282,.608,.023,.035],
       chest: [.427,.655,.048,.075],
@@ -102,6 +116,7 @@ export const dogRig = {
     paws: [[.064,.833,.043,.057],[.194,.849,.057,.049]],
     ear: [.133,.318,.042,.100,-1],
     secondEar: [.325,.357,.044,.102,1],
+    pile:1.02,
     touch: {
       nose: [.217,.389,.027,.044],
       chest: [.221,.580,.066,.099],

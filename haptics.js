@@ -43,8 +43,11 @@ export function bindHaptics(button){
     if(!gesture||gesture.id!==event.pointerId||!trustedTouch(event))return;
     const distance=Math.hypot(event.clientX-gesture.x,event.clientY-gesture.y);
     gesture.x=event.clientX;gesture.y=event.clientY;
-    if(!grounded(scene)){gesture.distance=0;return;}
-    gesture.contact=true;gesture.distance+=distance;
+    if(!grounded(scene)){gesture.contact=false;gesture.distance=0;return;}
+    if(!gesture.contact){
+      gesture.contact=true;gesture.distance=0;pulse('stroke');return;
+    }
+    gesture.distance+=distance;
     if(gesture.distance>=12&&pulse('stroke'))gesture.distance=0;
   }
   function end(event,scene){

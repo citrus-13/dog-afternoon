@@ -59,9 +59,10 @@ main { width: min(100%, 1376px); margin: auto; padding: clamp(16px, 3vw, 44px); 
   border-radius: 50%;
   background: radial-gradient(circle at 32% 26%, #c2c977, #9ca752 65%, #899447);
   box-shadow: inset -1px -2px 3px #53603235, 0 2px 3px #182b2430;
-  transform: translate(-50%, -50%) rotate(var(--prop-turn, 0deg));
+  transform: translate(-50%, -50%) rotate(var(--prop-turn, 0deg)) scale(var(--prop-scale, 1));
   pointer-events: none;
 }
+#return-ball { position:absolute; z-index:4; width:46px; height:46px; transform:translate(-50%,-50%); border:0; border-radius:50%; background:transparent; touch-action:manipulation; cursor:pointer; }
 #toy[data-visible=true] { display: block; }
 #toy::before, #toy::after { content: ""; position: absolute; top: -10%; width: 80%; height: 120%; border: 1.5px solid #e1e4b5; border-radius: 50%; }
 #toy::before { left: -57%; }
@@ -81,6 +82,7 @@ main { width: min(100%, 1376px); margin: auto; padding: clamp(16px, 3vw, 44px); 
   box-shadow: inset -2px -2px 3px #80998238, 0 2px 3px #182b2430;
 }
 #toy[data-kind=meal]::before {
+  opacity:var(--portion,1);
   top: 2%;
   left: 5%;
   width: 90%;
@@ -96,7 +98,9 @@ html[data-theme=dark] #moonlight { opacity: 1; }
 #touch-feedback { position: absolute; z-index: 5; left: 10px; bottom: 10px; max-width: calc(100% - 20px); margin: 0; padding: 5px 9px; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); color: var(--muted); font-size: 12px; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; opacity: 0; visibility: hidden; transition: opacity .18s, visibility .18s; }
 #touch-feedback[data-visible=true] { opacity: 1; visibility: visible; }
 #stage[data-ready=true] #scene { opacity: 1; }
-#stage[data-ready=true] #loading { visibility: hidden; }
+#stage[data-ready=true]:not([data-load-error]) #loading { visibility: hidden; }
+#stage:has(#retry:not([hidden])) #loading { top: calc(50% - 24px); }
+#stage #retry:not([hidden]) { top: calc(50% + 24px); }
 #loading, #retry { position: absolute; z-index: 5; top: 50%; left: 50%; translate: -50% -50%; padding: 8px 12px; border-radius: 12px; background: var(--panel); white-space: nowrap; }
 
 .sidebar { display: grid; gap: 12px; min-width: 0; }

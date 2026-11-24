@@ -36,6 +36,9 @@ export class DogSound {
     this._pressure = 1;
     this._tap = 0;
     this._seconds = 0;
+    this._breathPhase = 0;
+    this._exhale = 0;
+    this._sniff = 0;
     this._document = typeof document === 'undefined' ? null : document;
     this._onVisibilityChange = () => {
       if (this._document.hidden) {
@@ -84,7 +87,7 @@ export class DogSound {
     }
   }
 
-  update(contact, speed, nowSeconds, { zone = 'body', pressure = 1, tap = 0 } = {}) {
+  update(contact, speed, nowSeconds, { zone = 'body', pressure = 1, tap = 0, breathPhase, exhale = 0, sniff = 0 } = {}) {
     if (this._destroyed) return;
     this._contact = clamp01(contact);
     this._speed = clamp01(speed);
@@ -92,6 +95,9 @@ export class DogSound {
     this._pressure = clamp01(pressure);
     this._tap = clamp01(tap);
     this._seconds = Number.isFinite(nowSeconds) ? nowSeconds : (this._context?.currentTime ?? 0);
+    this._breathPhase = Number.isFinite(breathPhase) ? breathPhase : this._seconds * 1.35;
+    this._exhale = clamp01(exhale);
+    this._sniff = clamp01(sniff);
     if (!this._enabled || this._document?.hidden || this._context?.state !== 'running') return;
     this._mix();
   }
@@ -159,19 +165,14 @@ export class DogSound {
 
   _mix() {
     const time = this._context.currentTime;
-    const phase = ((this._seconds % 4.4) + 4.4) % 4.4;
-    let breath = 0;
-    if (phase < 1.6) {
-      breath = 0.78 * Math.sin(Math.PI * phase / 1.6) ** 1.6;
-    } else if (phase > 2 && phase < 4) {
-      breath = Math.sin(Math.PI * (phase - 2) / 2) ** 1.3;
-    }
+    const flow = Math.cos(this._breathPhase);
+    const breath = Math.abs(flow) ** 1.6 * (flow > 0 ? .74 : 1);
     const smooth = (parameter, value, seconds) => {
       parameter.cancelScheduledValues(time);
       parameter.setTargetAtTime(value, time, seconds);
     };
-    smooth(this._breath.gain, 0.042 * breath * (0.82 + this._contact * 0.18), 0.09);
-    smooth(this._breathFilter.frequency, 440 + 120 * breath, 0.15);
+    smooth(this._breath.gain, 0.042 * breath * (0.82 + this._contact * 0.18) + .032 * this._exhale + .028 * this._sniff, 0.09);
+    smooth(this._breathFilter.frequency, 440 + 120 * breath - 95 * this._exhale + 480 * this._sniff, 0.15);
     const [low, high, level] = BRUSH_PROFILES[this._zone];
     // Pressure gently rounds the texture; faster movement opens the upper band.
     // Smooth the existing filters so changing zones never introduces a tick.
