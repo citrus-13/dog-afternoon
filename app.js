@@ -15,7 +15,7 @@ const announce=text=>{notice.textContent=text;};
 const care=scene?bindCare({scene}):null;
 function save(key,value){try{localStorage.setItem('pet-the-dog.'+key,JSON.stringify(value));}catch{}}
 function read(key,fallback){try{return JSON.parse(localStorage.getItem('pet-the-dog.'+key))??fallback;}catch{return fallback;}}
-function setTheme(){const dark=document.documentElement.dataset.theme==='dark';theme.setAttribute('aria-checked',String(dark));document.querySelector('meta[name="theme-color"]').content=dark?'#111d1a':'#eef2e9';}
+function setTheme(){const dark=document.documentElement.dataset.theme==='dark';theme.setAttribute('aria-checked',String(dark));document.querySelector('meta[name="theme-color"]').content=dark?'#111d1a':'#f4efe6';}
 setTheme();
 theme.addEventListener('click',()=>{const next=document.documentElement.dataset.theme==='dark'?'light':'dark';document.documentElement.dataset.theme=next;try{localStorage.setItem('pet-the-dog.theme',next);}catch{}const url=new URL(location.href);if(url.searchParams.has('theme')){url.searchParams.set('theme',next);try{history.replaceState(null,'',url);}catch{}}setTheme();});
 async function choose(id){
