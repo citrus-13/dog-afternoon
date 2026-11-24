@@ -1,4 +1,4 @@
-import {DogScene} from './scene.js?v=pet-reactions-2';
+import {DogScene} from './scene.js?v=natural-motion-3';
 import {DogSound} from './sound.js';
 import {bindCare} from './care-ui.js?v=pet-reactions-2';
 
