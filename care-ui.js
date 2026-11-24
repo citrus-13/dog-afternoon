@@ -1,5 +1,7 @@
 import {DogCare} from './care.js?v=rana-bichon-5';
 
+import {bindHandPlay} from './hand-play.js?v=hand-play-18';
+
 const messages={
   treat:'它嗅了嗅，把零食吃掉了。',
   meal:'它低下头，开始吃狗粮。',
@@ -8,7 +10,7 @@ const messages={
 const saveHint='进度会自动保存在这个浏览器。';
 const saveUnavailable='当前浏览器暂时无法存档。';
 
-export function bindCare({scene,isSelecting=()=>false}){
+export function bindCare({scene,isSelecting=()=>false,feedback=()=>{}}){
   const model=new DogCare();
   const status=document.querySelector('#care-status');
   const growthStatus=document.querySelector('#growth-status');
@@ -21,7 +23,8 @@ export function bindCare({scene,isSelecting=()=>false}){
   let nextUpdate=0;
   let appliedGrowth=null,wasWaiting=false,statusUntil=0;
   const ball=document.getElementById('roll-ball');
-  const returned=document.getElementById('return-ball');
+  let passes=0,impact=false,input='';
+  const play=bindHandPlay({scene,finish:act,feedback:(beat,source)=>{input=source;feedback(beat,input);}});
 
   function showStatus(message=''){
     statusUntil=message?performance.now()+4000:0;
@@ -45,36 +48,40 @@ export function bindCare({scene,isSelecting=()=>false}){
     if(growthStatus&&growthStatus.textContent!==growth.label)growthStatus.textContent=growth.label;
   }
 
-  function act(kind){
+  function act(kind,origin=null){
     if(!dog||!scene?.ready||isSelecting())return;
     if(!scene.canPerformCare){
       showStatus('等它做完这个动作。');
       return;
     }
-    const passingBack=kind==='ball'&&scene.ballWaiting;
-    const accepted=kind==='ball'?model.play(dog)||passingBack:model.feed(dog,kind);
-    if(!accepted){
-      showStatus(kind==='ball'
-        ?'让它歇一会儿，再滚球。'
-        :kind==='meal'?'它还不饿，先留着狗粮吧。':'它肚子挺饱，待会儿再给零食吧。');
+    if(kind==='ball')model.play(dog);
+    if(kind!=='ball'&&!model.feed(dog,kind)){
+      showStatus(kind==='meal'?'它还不饿，先留着狗粮吧。':'它肚子挺饱，待会儿再给零食吧。');
       return;
     }
-    scene.performCare(kind);
-    wasWaiting=false;ball.textContent='滚球';
-    showStatus(passingBack?'球又滚向它的前爪。':messages[kind]);
+    scene.performCare(kind,origin);impact=false;
+    if(kind==='ball')passes++;
+    wasWaiting=false;ball.textContent='推球玩';
+    showStatus(messages[kind]);
     render();
   }
 
   for(const [id,kind] of [['feed-treat','treat'],['feed-meal','meal'],['roll-ball','ball']]){
-    document.getElementById(id).addEventListener('click',()=>act(kind));
+    document.getElementById(id).addEventListener('click',()=>{
+      if(!dog||!scene.ready||isSelecting())return;
+      if(!scene.canPerformCare){showStatus('等它做完这个动作。');return;}
+      play.stop();
+      if(kind==='meal'){act(kind);return;}
+      if(kind==='treat'&&model.get(dog).fullness>83){
+        showStatus('它肚子挺饱，待会儿再给零食吧。');return;
+      }
+      input='';
+      if(play.start(kind)){
+        scene.stage.scrollIntoView({block:'nearest'});
+        scene.stage.querySelector('#play-grip').focus({preventScroll:true});
+      }
+    });
   }
-
-  returned?.addEventListener('click',()=>{
-    if(scene.ballWaiting){
-      act('ball');
-      if(document.activeElement===returned||document.activeElement===document.body)ball.focus?.({preventScroll:true});
-    }
-  });
 
   function flushPet(){
     if(!dog)return;
@@ -83,18 +90,25 @@ export function bindCare({scene,isSelecting=()=>false}){
   }
 
   return {
-    flushPet,
+    flushPet,stopPlay:play.stop,get playing(){return play.active;},
     selectDog(id){
-      dog=id;wasWaiting=false;ball.textContent='滚球';
+      play.clearResult();dog=id;passes=0;impact=false;wasWaiting=false;ball.textContent='推球玩';
       showStatus();
       render();
     },
     update(now){
+      play.update(now);
+      if(scene.action&&!impact&&((scene.action.kind==='ball'&&scene.action.time>=1.06)||(scene.action.kind==='treat'&&scene.action.time>=.67))){
+        impact=true;
+        const caught=scene.action.kind==='ball';
+        play.result(caught?'接住了 · 第 '+passes+' 次':'咔嚓，吃到了',now);
+        feedback(caught?'catch':'bite',input);
+      }
       if(!dog||now<nextUpdate)return;
       nextUpdate=now+240;
       if(scene.ballWaiting&&!wasWaiting){
-        ball.textContent='滚回去';
-        showStatus('它把球拨回来了。点球可以再滚一次。');
+        ball.textContent='再推一次';
+        showStatus('它把球拨回来了。已接 '+passes+' 次，按住球可以继续。');
       }else if(statusUntil&&now>=statusUntil)showStatus();
       wasWaiting=Boolean(scene.ballWaiting);
       const previous=model.get(dog).affection;

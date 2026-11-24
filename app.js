@@ -1,7 +1,7 @@
-import {DogScene} from './scene.js?v=body-language-17';
-import {DogSound} from './sound.js?v=companion-16';
-import {bindCare} from './care-ui.js?v=companion-16';
-import {bindHaptics} from './haptics.js?v=companion-16';
+import {DogScene} from './scene.js?v=hand-play-18';
+import {DogSound} from './sound.js?v=hand-play-18';
+import {bindCare} from './care-ui.js?v=hand-play-18';
+import {bindHaptics} from './haptics.js?v=hand-play-18';
 
 const $=s=>document.querySelector(s);
 const stage=$('#stage'),viewer=$('#viewer'),notice=$('#notice');
@@ -28,7 +28,7 @@ let feedbackKey='',feedbackUntil=0,feedbackVisible=false;
 let scene,wanted='sheepdog',ticket=0,pointerId=null,key=null,loop=null,ambientTimer=null,active=true,expandedFallback=false;
 try{scene=new DogScene($('#scene'),stage,$('#hand'));}catch(error){$('#loading').textContent='画面暂时无法启动';$('#retry').hidden=false;console.error(error);}
 const announce=text=>{notice.textContent=text;};
-const care=scene?bindCare({scene,isSelecting:()=>stage.hasAttribute('aria-busy')}):null;
+const care=scene?bindCare({scene,feedback:(beat,input)=>{haptics.play(beat,input);sound.playBeat(beat);},isSelecting:()=>stage.hasAttribute('aria-busy')}):null;
 function localDaypart(hour){return hour<6||hour>=20?'night':hour<8?'dawn':hour<17?'day':'dusk';}
 function updateAmbient(){
   const now=new Date(),hour=now.getHours(),phase=localDaypart(hour);
@@ -76,7 +76,7 @@ function updateTouchFeedback(now){
 async function choose(id){
   if(!scene||!Object.hasOwn(names,id))return;
   if(scene.ready&&stage.dataset.selected===id&&wanted===id&&!stage.dataset.loadError)return;
-  clearInput();delete stage.dataset.loadError;
+  care?.stopPlay();clearInput();delete stage.dataset.loadError;
   wanted=id;const current=++ticket;stage.setAttribute('aria-busy','true');$('#retry').hidden=true;
   try{
     let img=images.get(id);
@@ -127,7 +127,7 @@ function clearInput(){
   haptics.cancel();scene?.leave();resetTouchFeedback();
 }
 stage.addEventListener('pointerdown',e=>{
-  if(!scene||stage.hasAttribute?.('aria-busy')||e.target.closest('button')||e.isPrimary===false||pointerId!==null)return;
+  if(!scene||care?.playing||stage.hasAttribute?.('aria-busy')||e.target.closest('button')||e.isPrimary===false||pointerId!==null)return;
   if(e.pointerType!=='touch'&&e.button!==0)return;
   clearKeys();scene.leave();pointerId=e.pointerId;stage.dataset.input=e.pointerType;
   const p=pointerPosition(e);scene.press(p.x,p.y,pointerPressure(e));haptics.press(e,scene);e.preventDefault();
@@ -135,7 +135,7 @@ stage.addEventListener('pointerdown',e=>{
   if(e.pointerType!=='touch')stage.focus?.({preventScroll:true});
 });
 stage.addEventListener('pointermove',e=>{
-  if(!scene||key||e.target.closest('button'))return;
+  if(!scene||care?.playing||key||e.target.closest('button'))return;
   if(pointerId!==null?e.pointerId!==pointerId:e.pointerType!=='mouse')return;
   // Preserve direction changes in a short mobile rub even when the browser
   // delivers several samples together. Bound the work on high-rate pens.
@@ -162,7 +162,7 @@ function startKey(next){
   scene.press(p.x,p.y,undefined,key.tailDirection);
 }
 stage.addEventListener('keydown',e=>{
-  if(e.target!==stage||!scene||e.altKey||e.ctrlKey||e.metaKey)return;
+  if(e.target!==stage||!scene||care?.playing||e.altKey||e.ctrlKey||e.metaKey)return;
   const type=keyGesture(e);if(!type)return;
   e.preventDefault();if(e.repeat||pointerId!==null)return;
   const id=e.code||e.key.toLowerCase();
@@ -181,7 +181,7 @@ stage.addEventListener('blur',clearInput);
 window.addEventListener('blur',clearInput);
 function frame(now){
   if(active&&scene){
-    if(key){const p=scene.gesturePoint(key.type,(now-key.start)/1000,key.other);scene.point(p.x,p.y);}
+    if(key&&!care?.playing){const p=scene.gesturePoint(key.type,(now-key.start)/1000,key.other);scene.point(p.x,p.y);}
     scene.frame(now);updateTouchFeedback(now);care?.update(now);sound.update(scene.pet,scene.speed,now/1000,{zone:scene.zone,pressure:scene.contactForce,tap:scene.pat,breathPhase:scene.breathPhase,exhale:scene.exhale,sniff:scene.sniffBreath});
   }
   loop=requestAnimationFrame(frame);

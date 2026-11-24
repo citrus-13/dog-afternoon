@@ -67,5 +67,9 @@ export function bindHaptics(button){
   coarse?.addEventListener?.('change',syncAvailability);
   document.addEventListener('visibilitychange',()=>{if(document.hidden)cancel();});
   syncAvailability();
-  return {press,point,end,cancel};
+  function play(beat,source){
+    if(source!=='touch'||!available||!enabled||document.hidden||navigator.userActivation?.hasBeenActive===false)return;
+    vibrate(beat==='catch'?[12,45,9]:beat==='bite'?[5,35,5]:7);
+  }
+  return {press,point,end,cancel,play};
 }

@@ -51,6 +51,31 @@ export class DogSound {
     this._document?.addEventListener('visibilitychange', this._onVisibilityChange);
   }
 
+  playBeat(beat) {
+    const ctx=this._context;
+    if(!this._enabled||ctx?.state!=='running'||this._document?.hidden)return;
+    if(beat==='bite'){
+      const noise=ctx.createBufferSource(),filter=ctx.createBiquadFilter(),gain=ctx.createGain(),at=ctx.currentTime;
+      noise.buffer=this._noise;
+      filter.type='bandpass';filter.frequency.value=1850;filter.Q.value=.8;
+      gain.gain.setValueAtTime(.11,at);gain.gain.exponentialRampToValueAtTime(.001,at+.03);
+      gain.gain.setValueAtTime(.055,at+.043);gain.gain.exponentialRampToValueAtTime(.001,at+.083);
+      noise.connect(filter);filter.connect(gain);gain.connect(this._master);
+      noise.onended=()=>{noise.disconnect();filter.disconnect();gain.disconnect();};
+      noise.start(at);noise.stop(at+.09);return;
+    }
+    if(beat!=='catch')return;
+    const thud=ctx.createOscillator(),gain=ctx.createGain(),at=ctx.currentTime;
+    thud.frequency.setValueAtTime(135,at);
+    thud.frequency.exponentialRampToValueAtTime(58,at+.078);
+    gain.gain.setValueAtTime(.0001,at);
+    gain.gain.exponentialRampToValueAtTime(.16,at+.008);
+    gain.gain.exponentialRampToValueAtTime(.0001,at+.095);
+    thud.connect(gain);gain.connect(this._master);
+    thud.onended=()=>{thud.disconnect();gain.disconnect();};
+    thud.start(at);thud.stop(at+.10);
+  }
+
   async setEnabled(enabled) {
     if (this._destroyed) return false;
     const requestId = ++this._requestId;
@@ -148,6 +173,7 @@ export class DogSound {
       this._brush.connect(master);
 
       const buffer = context.createBuffer(1, Math.ceil(context.sampleRate * 4.4), context.sampleRate);
+      this._noise=buffer;
       const samples = buffer.getChannelData(0);
       for (let i = 0; i < samples.length; i++) samples[i] = Math.random() * 2 - 1;
       const noise = own(context.createBufferSource());
@@ -209,7 +235,7 @@ export class DogSound {
     this._context = null;
     this._nodes = [];
     this._sources = [];
-    this._master = this._breath = this._brush = this._breathFilter = null;
+    this._noise = this._master = this._breath = this._brush = this._breathFilter = null;
     this._brushHighpass = this._brushLowpass = null;
     if (context && context.state !== 'closed') {
       try { Promise.resolve(context.close()).catch(() => {}); } catch { /* Browser already disposed it. */ }

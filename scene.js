@@ -167,7 +167,7 @@ export class DogScene{
     this.handSize={width:handWidth,height:handWidth*1.5};
     this.hand.style.width=`${handWidth}px`;
     this.hand.style.height=`${this.handSize.height}px`;
-    if(this.ballWaiting)this.renderProp(propDuration.ball,'ball');
+    if(this.ballWaiting&&!this.playTarget)this.renderProp(propDuration.ball,'ball');
   }
   setProportions(size,width){this.size=.72+Number(size)*.056;this.thickness=.8+Number(width)*.04;this.layout();}
   async load(url){
@@ -263,7 +263,7 @@ export class DogScene{
     this.noseLook=0;
     this.gazeX=0;this.gazeY=0;this.earEase=[0,0];
     this.breathRelease=-Infinity;this.exhale=0;this.listen=0;this.listenFar=0;
-    this.propLook=null;this.ballWaiting=false;
+    this.propLook=null;this.playTarget=null;this.playSniff=0;this.ballWaiting=false;
     this.catchBall=this.stage.querySelector('#return-ball');
     if(this.catchBall)this.catchBall.hidden=true;
     this.zone='idle';
@@ -526,11 +526,11 @@ export class DogScene{
   }
   setBond(affection){this.bond=clamp(affection/100);}
   get canPerformCare(){return this.ready&&!this.action;}
-  performCare(kind){
+  performCare(kind,origin=null){
     if(!this.canPerformCare||!propDuration[kind])return;
     this.ballWaiting=false;
     if(this.catchBall)this.catchBall.hidden=true;
-    this.action={kind,time:0};
+    this.action={kind,time:0,origin};
     if(this.prop){
       this.prop.dataset.kind=kind;
       this.prop.dataset.visible='true';
@@ -543,6 +543,7 @@ export class DogScene{
     const [cx,cy]=this.face.chin;
     const [pawX,pawY]=this.rig.paws.find(([,y])=>y>.60)??[cx,cy];
     const reduced=this.reduce.matches;
+    const origin=this.action?.origin;
     const isBall=kind==='ball',isTreat=kind==='treat';
     const arrive=reduced?1:smooth(.10,isTreat?.66:.80,time);
     let u,v,spin=0,portion=1,scale=1;
@@ -551,14 +552,22 @@ export class DogScene{
       const inward=reduced?1:1-(1-clamp(time/1.06))**2;
       const outward=reduced?Number(time>=1.42):1-(1-clamp((time-1.24)/1.02))**2;
       const along=inward*(1-outward);
-      u=.84+(pawX-.018-.84)*along;
+      u=.84+(pawX+.016-.84)*along;
       v=.93+(Math.min(.94,pawY+.035)-.93)*along;
+      if(origin&&time<1.06){
+        u=origin.u+(pawX+.016-origin.u)*inward;
+        v=origin.v+(Math.min(.94,pawY+.035)-origin.v)*inward;
+      }
       spin=reduced?0:-along*420;
     }else{
       const [nx,ny]=this.rig.touch.nose;
       const mouthX=nx+(cx-nx)*.40,mouthY=ny+(cy-ny)*.56+.022;
       u=mouthX+.044*(1-arrive);
       v=Math.min(.94,mouthY+(isTreat?.14:.16))*(1-arrive)+(mouthY+(isTreat?0:.054))*arrive;
+      if(origin&&isTreat){
+        u=origin.u+(mouthX-origin.u)*arrive;
+        v=origin.v+(mouthY-origin.v)*arrive;
+      }
       if(isTreat)scale=1-smooth(.66,.96,time);
       else portion=1-(smooth(.70,.91,time)+smooth(1.36,1.57,time)+smooth(1.99,2.22,time))/3;
     }
@@ -569,7 +578,7 @@ export class DogScene{
     this.prop.style.setProperty('--prop-turn',`${spin}deg`);
     this.prop.style.setProperty('--prop-scale',String(scale));
     this.prop.style.setProperty('--portion',String(portion));
-    this.prop.style.opacity=String(smooth(0,.16,time)*(isBall?1:1-smooth(duration-.55,duration,time)));
+    this.prop.style.opacity=String((origin?1:smooth(0,.16,time))*(isBall?1:1-smooth(duration-.55,duration,time)));
     if(isBall&&this.catchBall){
       this.catchBall.style.left=this.prop.style.left;
       this.catchBall.style.top=this.prop.style.top;
@@ -650,9 +659,10 @@ export class DogScene{
           weight*=weight/(weight+other+.0001);
         }
         const [pxShift,pyShift]=turn(u,v,px+rx*.78,py-area[3]*.38,-strength*.080,aspect);
-        const playReach=pose.ballReach?(index===this.playPaw?1.85:0):1;
-        dx+=weight*((pxShift+strength*Math.min(.020,rx*.46))*recoil-reach*.006*playReach);
-        dy+=weight*((pyShift-strength*Math.min(.030,area[3]*.54))*recoil+reach*.005*playReach);
+        const volley=pose.ballReach&&index===this.playPaw;
+        const playReach=pose.ballReach?(volley?1:0):1;
+        dx+=weight*((pxShift+strength*Math.min(.020,rx*.46))*recoil+reach*(volley?Math.min(.046,rx*.85):-.006)*playReach);
+        dy+=weight*((pyShift-strength*Math.min(.030,area[3]*.54))*recoil+reach*(volley?-.018:.005)*playReach);
       }
     }
     if(pose.chest>.001){
@@ -765,7 +775,7 @@ export class DogScene{
     const releaseAge=this.motion.time-this.returnLookAt;
     const follow=smooth(.12,.36,releaseAge)*(1-smooth(.48,1.04,releaseAge));
     this.returnSniff=approach(this.returnSniff,follow,.08);
-    const target=this.action?this.propLook:hand??(releaseAge<.78?this.returnTarget:null);
+    const target=this.action?this.propLook:this.playTarget??hand??(releaseAge<.78?this.returnTarget:null);
     const [first,second=first]=this.rig.eyes;
     const gazeX=paired&&target?clamp((target.u-(first[0]+second[0])*.5)/.20,-1,1):0;
     const gazeY=paired&&target?clamp((target.v-(first[1]+second[1])*.5)/.32,-1,1):0;
@@ -788,7 +798,7 @@ export class DogScene{
     // The ears orient as the ball starts moving, or just after the nose investigates a hand.
     const ballTime=this.action?.kind==='ball'?this.action.time:Infinity;
     const ball=smooth(.06,.22,ballTime)*(1-smooth(.58,.99,ballTime));
-    this.listen=approach(this.listen,Math.max(ball,cue.sniff*.84,lookBack*.95),.105);
+    this.listen=approach(this.listen,Math.max(ball,cue.sniff*.84,lookBack*.95,this.playTarget ? .60 : 0),.105);
     this.listenFar=approach(this.listenFar,this.rig.secondEar?this.listen*.72:0,.14);
     if(this.action||(this.contact&&(this.pressed||this.strokeTime>0)))this.breathRelease=-Infinity;
     const age=this.motion.time-this.breathRelease;
@@ -933,14 +943,17 @@ export class DogScene{
     const targetNoseX=(this.target.x*this.width-b.x)/b.w-this.rig.touch.nose[0];
     this.noseLook=approach(this.noseLook,this.nearNose&&!this.action?clamp(targetNoseX*.17,-.021,.016):0,4.5);
     const lift=cue.nod*.052*(1-this.furPress*.76);
-    this.headResponse=approach(this.headResponse,lift,5.8);
-    this.headTurn=approach(this.headTurn,cue.tilt*.060+this.noseLook,5.2);
+    const lure=this.playTarget;
+    const liftToward=lure?clamp((this.rig.touch.nose[1]-lure.v)*.10,-.024,.045):0;
+    const turnToward=lure?clamp((lure.u-this.face.head[0])*.18,-.060,.075):0;
+    this.headResponse=approach(this.headResponse,lift+liftToward+this.playSniff*.012,5.8);
+    this.headTurn=approach(this.headTurn,cue.tilt*.060+this.noseLook+turnToward,5.2);
     this.relax=approach(this.relax,resting?1:0,3);
     const careEnd=this.action?propDuration[this.action.kind]:0;
     const careWeight=this.action?smooth(0,.21,this.action.time)*(1-smooth(careEnd-.30,careEnd,this.action.time)):0;
     const nuzzle=this.followTouch(dt,zone,cue,forceTarget);
     const lids=this.expression(dt,cue,nuzzle,lookBack);
-    this.sniffBreath=Math.max(cue.sniff,this.returnSniff*.70);
+    this.sniffBreath=Math.max(cue.sniff,this.returnSniff*.70,this.playSniff);
     this.breathPhase+=dt*(1.35-this.relax*.22);
     const tailAge=this.motion.time-this.tapAt;
     const tailPerk=!this.action&&this.tapPart==='tail'

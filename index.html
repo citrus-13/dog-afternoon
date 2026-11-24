@@ -7,7 +7,7 @@
   <meta name="description" content="一只安静陪着你的狗狗。摸摸头，顺顺毛，看看它开心地摇尾巴。">
   <title>狗狗午后</title>
   <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="./share.css?v=body-language-17">
+  <link rel="stylesheet" href="./share.css?v=hand-play-18">
   <script>{const h=new Date().getHours(),p=h<6||h>=20?'night':h<8?'dawn':h<17?'day':'dusk';document.documentElement.dataset.daypart=p;document.documentElement.dataset.theme=p==='night'?'dark':'light';}</script>
 </head>
 <body>
@@ -27,6 +27,10 @@
         <canvas id="scene" aria-hidden="true"></canvas>
         <span id="toy" data-kind="ball" aria-hidden="true"></span>
         <button id="return-ball" type="button" aria-label="把球滚回给狗狗" title="把球滚回给狗狗" hidden></button>
+        <button id="play-aim" type="button" hidden></button>
+        <button id="play-grip" type="button" hidden></button>
+        <p id="play-prompt" role="status" hidden></p>
+        <button id="put-away" type="button" hidden>收起</button>
         <div id="hand" aria-hidden="true">
           <img class="hand-sleeve" src="./assets/petting-hand.webp" alt="" draggable="false">
           <img class="hand-palm" src="./assets/petting-hand.webp" alt="" draggable="false">
@@ -62,18 +66,18 @@
             <div class="care-meter"><label for="fullness">饱腹 <span id="fullness-value">46%</span></label><progress id="fullness" max="100" value="46">46%</progress></div>
           </div>
           <div class="care-actions" role="group" aria-label="照料与玩耍">
-            <button id="feed-treat" type="button">给零食</button>
+            <button id="feed-treat" type="button">手喂零食</button>
             <button id="feed-meal" type="button">喂狗粮</button>
-            <button id="roll-ball" type="button">滚球</button>
+            <button id="roll-ball" type="button">推球玩</button>
           </div>
           <p id="growth-status">体型随照顾慢慢变化。</p>
           <p id="care-status" role="status" aria-live="polite" aria-atomic="true">进度会自动保存在这个浏览器。</p>
         </section>
       </div>
-      <p class="hint" id="gesture"><span class="desktop-hint">试试按住耳根来回揉两下，或沿着背慢慢顺毛。往尾根带会蜷起，往尾尖捋会舒展。<span class="keyboard-hint">H 额头 · E 耳朵 · J 下巴 · N 鼻尖 · P 前爪 · Shift+E / Shift+P 换另一侧 · C 胸口 · S 身侧 · 空格/Enter 顺背 · T 舒尾 · Shift+T 蜷尾</span></span><span class="touch-hint">试试按住耳根来回揉两下，或沿着背慢慢顺毛。往尾根带会蜷起，往尾尖捋会舒展。</span></p>
+      <p class="hint" id="gesture"><span class="desktop-hint">试试按住耳根来回揉两下，或沿着背慢慢顺毛。往尾根带会蜷起，往尾尖捋会舒展。<span class="keyboard-hint">H 额头 · E 耳朵 · J 下巴 · N 鼻尖 · P 前爪 · Shift+E / Shift+P 换另一侧 · C 胸口 · S 身侧 · 空格/Enter 顺背 · T 舒尾 · Shift+T 蜷尾</span></span><span class="touch-hint">揉揉耳根，或顺着背慢慢摸。玩球和手喂时可以拖动物品，也可以轻点亮圈。</span></p>
     </section>
     <p id="notice" class="sr-only" role="status" aria-live="polite"></p>
   </main>
-  <script type="module" src="./app.js?v=body-language-17"></script>
+  <script type="module" src="./app.js?v=hand-play-18"></script>
 </body>
 </html>
