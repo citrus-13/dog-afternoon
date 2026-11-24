@@ -1,4 +1,4 @@
-import {DogScene} from './scene.js?v=distinct-pets-8';
+import {DogScene} from './scene.js?v=natural-touch-9';
 import {DogSound} from './sound.js?v=soft-touch-7';
 import {bindCare} from './care-ui.js?v=rana-bichon-5';
 
@@ -13,14 +13,14 @@ const heldKeys=new Map();
 const touchLabels={head:'额头',ear:'耳朵',chin:'下巴',nose:'鼻尖',paw:'前爪',chest:'胸口',side:'身侧',back:'背部',tail:'尾巴'};
 const touchResponses={
   head:{'fur-press':'毛毛轻轻压下'},
-  ear:{ear:'耳尖轻轻折下','ear-fold':'耳尖轻轻折下'},
-  chin:{chin:'鼻梁轻轻抬起'},
+  ear:{ear:'耳尖动了动','ear-fold':'耳尖轻轻折下'},
+  chin:{chin:'轻轻抬了抬头'},
   nose:{sniff:'连着轻嗅两下'},
-  paw:{paw:'脚趾轻轻缩回'},
+  paw:{paw:'这只前爪往回收了一点'},
   chest:{chest:'缓缓起伏'},
   side:{side:'身体向手边靠'},
   back:{back:'毛毛顺着手伏下',blink:'慢慢眨了眨眼',settle:'顺毛后安静下来'},
-  tail:{'tail-straight':'顺着手慢慢伸展',tail:'跟着手轻轻摆动'},
+  tail:{'tail-straight':'顺着手舒展开','tail-curl':'往里轻轻卷起来',tail:'轻摆一下'},
 };
 let feedbackKey='',feedbackUntil=0,feedbackVisible=false;
 let scene,selection='sheepdog',wanted='sheepdog',ticket=0,pointerId=null,key=null,loop=null,ambientTimer=null,active=true,expandedFallback=false;
@@ -129,8 +129,7 @@ function startKey(next){
   key=next;scene.leave();
   if(!key)return;
   const p=scene.gesturePoint(key.type,(performance.now()-key.start)/1000);
-  scene.press(p.x,p.y);
-  if(key.type==='tail')scene.wagTail();
+  scene.press(p.x,p.y,undefined,key.tailDirection);
 }
 stage.addEventListener('keydown',e=>{
   if(e.target!==stage||!scene||e.altKey||e.ctrlKey||e.metaKey)return;
@@ -138,7 +137,8 @@ stage.addEventListener('keydown',e=>{
   e.preventDefault();if(e.repeat||pointerId!==null)return;
   const id=e.code||e.key.toLowerCase();
   if(heldKeys.has(id))return;
-  const next={id,type,start:performance.now()};heldKeys.set(id,next);startKey(next);
+  const next={id,type,start:performance.now(),tailDirection:type==='tail'?(e.shiftKey?-1:1):0};
+  heldKeys.set(id,next);startKey(next);
   announce({head:'正在轻轻摸额头',ear:'正在轻挠耳朵',chin:'正在轻挠下巴',nose:'正在轻碰鼻尖',paw:'正在轻碰前爪',chest:'正在轻抚胸口',side:'正在轻抚身侧',back:'正在慢慢顺背毛',tail:'正在顺着尾巴轻轻抚摸'}[type]);
 });
 stage.addEventListener('keyup',e=>{
