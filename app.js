@@ -1,4 +1,4 @@
-import {DogScene} from './scene.js?v=companion-16';
+import {DogScene} from './scene.js?v=body-language-17';
 import {DogSound} from './sound.js?v=companion-16';
 import {bindCare} from './care-ui.js?v=companion-16';
 import {bindHaptics} from './haptics.js?v=companion-16';
@@ -16,9 +16,9 @@ const touchLabels={head:'额头',ear:'耳朵',chin:'下巴',nose:'鼻尖',paw:'�
 const touchResponses={
   head:{'fur-press':'毛毛轻轻压下','head-soften':'眯了眯眼睛'},
   ear:{ear:'耳尖动了动','ear-fold':'耳尖轻轻折下'},
-  chin:{chin:'轻轻抬了抬头'},
-  nose:{sniff:'连着轻嗅两下'},
-  paw:{paw:'这只前爪往回收了一点'},
+  chin:{chin:'仰起脸，把下巴送到手边'},
+  nose:{sniff:'缩了缩鼻子，又凑过来闻'},
+  paw:{paw:'把碰到的那只前爪收回来'},
   chest:{chest:'缓缓起伏'},
   side:{side:'身体向手边靠'},
   back:{back:'毛毛顺着手伏下',blink:'慢慢眨了眨眼',settle:'顺毛后安静下来'},
@@ -129,7 +129,7 @@ function clearInput(){
 stage.addEventListener('pointerdown',e=>{
   if(!scene||stage.hasAttribute?.('aria-busy')||e.target.closest('button')||e.isPrimary===false||pointerId!==null)return;
   if(e.pointerType!=='touch'&&e.button!==0)return;
-  clearKeys();scene.leave();pointerId=e.pointerId;
+  clearKeys();scene.leave();pointerId=e.pointerId;stage.dataset.input=e.pointerType;
   const p=pointerPosition(e);scene.press(p.x,p.y,pointerPressure(e));haptics.press(e,scene);e.preventDefault();
   try{stage.setPointerCapture?.(e.pointerId);}catch{}
   if(e.pointerType!=='touch')stage.focus?.({preventScroll:true});
@@ -139,6 +139,7 @@ stage.addEventListener('pointermove',e=>{
   if(pointerId!==null?e.pointerId!==pointerId:e.pointerType!=='mouse')return;
   // Preserve direction changes in a short mobile rub even when the browser
   // delivers several samples together. Bound the work on high-rate pens.
+  if(pointerId===null)stage.dataset.input=e.pointerType;
   const samples=pointerId!==null?e.getCoalescedEvents?.():null;
   if(samples?.length>1){
     const stride=Math.ceil(samples.length/6);
@@ -155,7 +156,7 @@ window.addEventListener('pointerup',endPointer);window.addEventListener('pointer
 stage.addEventListener('pointerleave',()=>{if(pointerId===null&&!key)scene?.leave();});
 function keyGesture(event){return {' ':'back',Enter:'back',h:'head',e:'ear',j:'chin',n:'nose',p:'paw',c:'chest',s:'side',t:'tail'}[event.key==='Enter'?'Enter':event.key.toLowerCase()];}
 function startKey(next){
-  key=next;scene.leave();
+  key=next;scene.leave();if(key)stage.dataset.input='keyboard';
   if(!key)return;
   const p=scene.gesturePoint(key.type,(performance.now()-key.start)/1000,key.other);
   scene.press(p.x,p.y,undefined,key.tailDirection);
