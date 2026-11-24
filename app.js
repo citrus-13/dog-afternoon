@@ -1,6 +1,6 @@
-import {DogScene} from './scene.js?v=hand-play-18';
+import {DogScene} from './scene.js?v=cup-play-19';
 import {DogSound} from './sound.js?v=hand-play-18';
-import {bindCare} from './care-ui.js?v=hand-play-18';
+import {bindCare} from './care-ui.js?v=cup-play-19';
 import {bindHaptics} from './haptics.js?v=hand-play-18';
 
 const $=s=>document.querySelector(s);

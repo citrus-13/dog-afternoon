@@ -63,13 +63,15 @@ export function bindHandPlay({scene,finish,feedback}){
     stop();finish(mode,origin);
   }
   function tryBall(e){
-    const start=drag.start,goal=destination;
-    const dx=(point.x-start.x)*scene.width,dy=(point.y-start.y)*scene.height;
-    const gx=(goal.x-start.x)*scene.width,gy=(goal.y-start.y)*scene.height;
-    const len=Math.hypot(dx,dy),toward=(dx*gx+dy*gy)/Math.max(1,len);
-    const miss=Math.abs(dx*gy-dy*gx)/Math.max(1,len);
-    return distance(point,goal)<32||(len>=26&&toward>0&&miss<Math.max(28,.08*scene.width)
-      &&len/Math.max(1,e.timeStamp-drag.time)>.18);
+    if(distance(point,destination)<32)return true;
+    // Read the final flick independently of how long the player held the ball.
+    const first=drag.trail[0],last=drag.trail.at(-1);
+    if(e.timeStamp-last.t>130||last.t===first.t)return false;
+    const dx=(last.x-first.x)*scene.width,dy=(last.y-first.y)*scene.height;
+    const gx=(destination.x-first.x)*scene.width,gy=(destination.y-first.y)*scene.height;
+    const len=Math.hypot(dx,dy);
+    if(len<17||len/(last.t-first.t)<.18)return false;
+    return dx*gx+dy*gy>0&&Math.abs(dx*gy-dy*gx)/len<Math.max(28,.08*scene.width);
   }
   function take(e){
     if(e.isPrimary===false||e.button!==0||drag)return;
@@ -77,13 +79,19 @@ export function bindHandPlay({scene,finish,feedback}){
     if(!kind)return;
     e.preventDefault();e.stopPropagation();
     aimed=false;since=null;
-    drag={id:e.pointerId,start:{...point},time:e.timeStamp,offset:{x:point.x-screen(e).x,y:point.y-screen(e).y}};
+    drag={id:e.pointerId,start:{...point},trail:[{...point,t:e.timeStamp}],offset:{x:point.x-screen(e).x,y:point.y-screen(e).y}};
     stage.setPointerCapture(e.pointerId);
     feedback('pickup',e.pointerType);
   }
   function slide(e){
     if(e.pointerId!==drag?.id)return;
-    const p=screen(e);move({x:clamp(p.x+drag.offset.x,.025,.975),y:clamp(p.y+drag.offset.y,.04,.96)});
+    const previous=point,p=screen(e);move({x:clamp(p.x+drag.offset.x,.025,.975),y:clamp(p.y+drag.offset.y,.04,.96)});
+    if(kind==='ball'&&distance(previous,point)>.25){
+      const trail=drag.trail,t=e.timeStamp;
+      if(t-trail.at(-1).t>130)trail.splice(0,trail.length,{...previous,t:t-40});
+      trail.push({...point,t});
+      while(trail.length>2&&trail[1].t<t-115)trail.shift();
+    }
   }
   function release(e){
     if(e.pointerId!==drag?.id)return;

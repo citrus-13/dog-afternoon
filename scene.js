@@ -167,7 +167,7 @@ export class DogScene{
     this.handSize={width:handWidth,height:handWidth*1.5};
     this.hand.style.width=`${handWidth}px`;
     this.hand.style.height=`${this.handSize.height}px`;
-    if(this.ballWaiting&&!this.playTarget)this.renderProp(propDuration.ball,'ball');
+    if(this.ballWaiting&&!this.stage.dataset.play&&!this.playTarget)this.renderProp(propDuration.ball,'ball');
   }
   setProportions(size,width){this.size=.72+Number(size)*.056;this.thickness=.8+Number(width)*.04;this.layout();}
   async load(url){
@@ -263,7 +263,7 @@ export class DogScene{
     this.noseLook=0;
     this.gazeX=0;this.gazeY=0;this.earEase=[0,0];
     this.breathRelease=-Infinity;this.exhale=0;this.listen=0;this.listenFar=0;
-    this.propLook=null;this.playTarget=null;this.playSniff=0;this.ballWaiting=false;
+    this.propLook=null;this.playTarget=null;this.playSniff=0;this.cupDirection=0;this.cupJoy=0;this.cupLean=0;this.ballWaiting=false;
     this.catchBall=this.stage.querySelector('#return-ball');
     if(this.catchBall)this.catchBall.hidden=true;
     this.zone='idle';
@@ -943,6 +943,7 @@ export class DogScene{
     const targetNoseX=(this.target.x*this.width-b.x)/b.w-this.rig.touch.nose[0];
     this.noseLook=approach(this.noseLook,this.nearNose&&!this.action?clamp(targetNoseX*.17,-.021,.016):0,4.5);
     const lift=cue.nod*.052*(1-this.furPress*.76);
+    this.cupLean=approach(this.cupLean,this.cupDirection,5);
     const lure=this.playTarget;
     const liftToward=lure?clamp((this.rig.touch.nose[1]-lure.v)*.10,-.024,.045):0;
     const turnToward=lure?clamp((lure.u-this.face.head[0])*.18,-.060,.075):0;
@@ -962,14 +963,14 @@ export class DogScene{
       tailPerk:tailPerk*motion,
       earLocalA:this.earAngles[0]*motion,earLocalB:this.earAngles[1]*motion,
       listen:this.listen*motion,listenFar:this.listenFar*motion,
-      shoulderShift:this.shoulderShift*motion,shoulderRise:(this.shoulderRise-this.exhale*.049)*motion,neckPitch:(this.neckPitch-this.exhale*.021+lookBack*.135)*motion,
+      shoulderShift:(this.shoulderShift+this.cupLean*.025)*motion,shoulderRise:(this.shoulderRise-this.exhale*.049)*motion,neckPitch:(this.neckPitch-this.exhale*.021+lookBack*.135)*motion,
       touchX,touchY,pressX,pressY,
       coatDepth:['chest','side','back'].includes(surfaceZone)?pressure*pile*motion:0,
       careWeight:careWeight*motion,ballReach:this.action?.kind==='ball',
       headLift:(this.headResponse+this.returnSniff*.012)*motion,
       headTurn:this.headTurn*motion,
       breath:(Math.sin(this.breathPhase)*(.011+this.relax*.015)-this.exhale*.049)*motion,
-      wag:Math.sin(this.tailPhase)*this.wag*motion*(1-.8*Math.max(this.tailStraight,this.tailCurl)),
+      wag:Math.sin(this.tailPhase)*Math.max(this.wag,this.cupJoy*.82)*motion*(1-.8*Math.max(this.tailStraight,this.tailCurl)),
       stretch:cue.stretch*motion,
       earIndex:this.earIndex,
       ear:cue.ear*motion,

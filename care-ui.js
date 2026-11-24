@@ -1,6 +1,7 @@
 import {DogCare} from './care.js?v=rana-bichon-5';
 
-import {bindHandPlay} from './hand-play.js?v=hand-play-18';
+import {bindHandPlay} from './hand-play.js?v=cup-play-19';
+import {bindCupGame} from './cup-game.js?v=cup-play-19';
 
 const messages={
   treat:'它嗅了嗅，把零食吃掉了。',
@@ -25,6 +26,11 @@ export function bindCare({scene,isSelecting=()=>false,feedback=()=>{}}){
   const ball=document.getElementById('roll-ball');
   let passes=0,impact=false,input='';
   const play=bindHandPlay({scene,finish:act,feedback:(beat,source)=>{input=source;feedback(beat,input);}});
+
+  const cups=bindCupGame({scene,feedback,onWin(count){
+    model.play(dog);render();showStatus('你和它一起找到了 '+count+' 次球。');
+  }});
+  function stopPlay(){cups.stop();play.stop();play.clearResult();}
 
   function showStatus(message=''){
     statusUntil=message?performance.now()+4000:0;
@@ -66,11 +72,15 @@ export function bindCare({scene,isSelecting=()=>false,feedback=()=>{}}){
     render();
   }
 
-  for(const [id,kind] of [['feed-treat','treat'],['feed-meal','meal'],['roll-ball','ball']]){
+  for(const [id,kind] of [['feed-treat','treat'],['feed-meal','meal'],['roll-ball','ball'],['find-ball','cups']]){
     document.getElementById(id).addEventListener('click',()=>{
       if(!dog||!scene.ready||isSelecting())return;
       if(!scene.canPerformCare){showStatus('等它做完这个动作。');return;}
-      play.stop();
+      stopPlay();
+      if(kind==='cups'){
+        if(cups.start())scene.stage.scrollIntoView({block:'nearest'});
+        return;
+      }
       if(kind==='meal'){act(kind);return;}
       if(kind==='treat'&&model.get(dog).fullness>83){
         showStatus('它肚子挺饱，待会儿再给零食吧。');return;
@@ -90,14 +100,14 @@ export function bindCare({scene,isSelecting=()=>false,feedback=()=>{}}){
   }
 
   return {
-    flushPet,stopPlay:play.stop,get playing(){return play.active;},
+    flushPet,stopPlay,get playing(){return cups.active||play.active;},
     selectDog(id){
       play.clearResult();dog=id;passes=0;impact=false;wasWaiting=false;ball.textContent='推球玩';
       showStatus();
       render();
     },
     update(now){
-      play.update(now);
+      if(cups.active)cups.update(now);else play.update(now);
       if(scene.action&&!impact&&((scene.action.kind==='ball'&&scene.action.time>=1.06)||(scene.action.kind==='treat'&&scene.action.time>=.67))){
         impact=true;
         const caught=scene.action.kind==='ball';

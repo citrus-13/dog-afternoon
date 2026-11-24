@@ -200,3 +200,21 @@ body.expanded { overflow: hidden; }
 #put-away { right:6px; min-height:44px; min-width:44px; cursor:pointer; }
 #stage[data-play] #touch-feedback, #stage[data-play] #hand { visibility:hidden; }
 #return-ball { touch-action:none; }
+.care-actions { grid-template-columns:repeat(2,minmax(0,1fr)); }
+@media (min-width:540px) and (max-width:800px) { .care-actions { grid-template-columns:repeat(4,minmax(0,1fr)); } }
+#cup-board { position:absolute; inset:0; z-index:6; pointer-events:none; }
+.cup { position:absolute; width:clamp(52px,8vw,88px); aspect-ratio:1.15; transform:translate(-50%,-50%); padding:0; border:0; color:inherit; background:transparent; pointer-events:auto; touch-action:manipulation; }
+.cup:disabled { cursor:default; opacity:1; }
+.cup::before { content:""; position:absolute; bottom:4%; left:4%; width:95%; height:16%; border-radius:50%; background:#33231855; filter:blur(2px); }
+.cup-body { position:absolute; inset:1% 4% 7%; border-radius:30% 30% 14% 14% / 18% 18% 10% 10%; clip-path:polygon(15% 0,85% 0,100% 91%,98% 100%,2% 100%,0 91%); background:linear-gradient(100deg,#995b40,#ca8a69 20%,#d9a07d 46%,#b97754 82%,#975c43); box-shadow:inset 0 4px 2px #e2af90,inset 0 -4px 1px #83543d; transform-origin:65% 82%; transition:transform .24s ease-out; }
+.cup-body::before { content:""; position:absolute; inset:1% 15% auto; height:12%; border-radius:50%; background:#e2b496; box-shadow:inset 0 1px 2px #8055397a; }
+.cup-body i { position:absolute; top:38%; left:0; width:100%; color:#fff0d4; font:bold clamp(14px,2vw,20px)/1 system-ui; letter-spacing:2px; }
+.cup-ball { display:none; position:absolute; bottom:8%; left:33%; width:35%; aspect-ratio:1; border-radius:50%; background:radial-gradient(circle at 32% 27%,#d8df8f,#96a04f 66%,#68753b); box-shadow:inset -2px -1px 2px #53623177,0 2px 2px #30250e66; }
+.cup-ball::after { content:""; position:absolute; inset:5% 15% 40% -1%; border-bottom:2px solid #f3efc9; border-radius:50%; transform:rotate(-37deg); }
+.cup[data-ball=true][data-lift=true] .cup-ball { display:block; }
+.cup[data-lift=true] .cup-body { transform:translate(8%,-75%) rotate(12deg); }
+#cup-action { position:absolute; right:60px; top:8px; padding:0 9px; min-height:44px; color:var(--ink); background:var(--panel); border:1px solid var(--line); border-radius:14px; font-size:13px; pointer-events:auto; }
+#stage[data-play=cups] #play-prompt { max-width:calc(100% - 140px); }
+
+.cup[data-peek=true] .cup-body { transform:translateY(var(--peek-y)) rotate(var(--peek-angle)); transition:none; }
+.cup[data-ball=true][data-peek=true] .cup-ball { display:block; }
