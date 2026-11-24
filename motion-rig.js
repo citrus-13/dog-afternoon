@@ -5,22 +5,27 @@
 // Each ear is [center x, center y, radius x, radius y, outward direction].
 // Touch ellipses are [center x, center y, radius x, radius y] on visible texture.
 // Side/chest targets leave the keyboard back stroke (u .452-.708, v .40) clear.
+// Rana's body sits at (20, 80) on the 1920 × 960 tail composite.
+const placeRana=([x,y,rx,ry,...rest])=>[
+  (x*1600+20)/1920,(y*800+80)/960,rx*1600/1920,ry*800/960,...rest
+];
+
 export const dogRig = {
   sheepdog: {
     eyes: [
       [0.19875, 0.5675, 0.015, 0.02375, 0.18],
       [0.30625, 0.48125, 0.015, 0.025, 0.1],
-    ],
+    ].map(placeRana),
     paws: [
       [0.11375, 0.8325, 0.075, 0.09125],
       [0.28125, 0.89, 0.06875, 0.0475],
-    ],
-    ear: [.115,.609,.055,.131,-1],
+    ].map(placeRana),
+    ear: placeRana([.115,.609,.055,.131,-1]),
     touch: {
-      nose: [.313,.757,.032,.047],
-      chest: [.448,.692,.062,.095],
-      side: [.635,.570,.092,.112],
-      tail: [.921,.684,.044,.089],
+      nose: placeRana([.313,.757,.032,.047]),
+      chest: placeRana([.448,.692,.062,.095]),
+      side: placeRana([.635,.570,.092,.112]),
+      tail: [.894,.444,.108,.109],
     },
   },
   cockapoo: {

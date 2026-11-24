@@ -1,4 +1,4 @@
-import {DogScene} from './scene.js?v=soft-touch-7';
+import {DogScene} from './scene.js?v=distinct-pets-8';
 import {DogSound} from './sound.js?v=soft-touch-7';
 import {bindCare} from './care-ui.js?v=rana-bichon-5';
 
@@ -10,7 +10,18 @@ const buttons=[...document.querySelectorAll('[data-dog]')];
 const names={sheepdog:'Rana · 古牧',cockapoo:'可卡布',golden:'金毛',shiba:'黑柴',samoyed:'萨摩耶',bichon:'比熊'},images=new Map();
 const sound=new DogSound();
 const heldKeys=new Map();
-const touchLabels={head:'额头 · 毛毛轻轻压下',ear:'耳朵 · 轻轻抖了抖',chin:'下巴 · 抬了抬头',nose:'鼻尖 · 嗅了嗅',paw:'前爪 · 轻轻收爪',chest:'胸口 · 慢慢呼吸',side:'身侧 · 往手边靠了靠',back:'背部 · 放松下来',tail:'尾巴 · 顺着手伸直'};
+const touchLabels={head:'额头',ear:'耳朵',chin:'下巴',nose:'鼻尖',paw:'前爪',chest:'胸口',side:'身侧',back:'背部',tail:'尾巴'};
+const touchResponses={
+  head:{'fur-press':'毛毛轻轻压下'},
+  ear:{ear:'耳尖轻轻折下','ear-fold':'耳尖轻轻折下'},
+  chin:{chin:'鼻梁轻轻抬起'},
+  nose:{sniff:'连着轻嗅两下'},
+  paw:{paw:'脚趾轻轻缩回'},
+  chest:{chest:'缓缓起伏'},
+  side:{side:'身体向手边靠'},
+  back:{back:'毛毛顺着手伏下',blink:'慢慢眨了眨眼',settle:'顺毛后安静下来'},
+  tail:{'tail-straight':'顺着手慢慢伸展',tail:'跟着手轻轻摆动'},
+};
 let feedbackKey='',feedbackUntil=0,feedbackVisible=false;
 let scene,selection='sheepdog',wanted='sheepdog',ticket=0,pointerId=null,key=null,loop=null,ambientTimer=null,active=true,expandedFallback=false;
 try{scene=new DogScene($('#scene'),stage,$('#hand'));}catch(error){$('#loading').textContent='画面暂时无法启动';$('#retry').hidden=false;console.error(error);}
@@ -35,14 +46,23 @@ function showTouchFeedback(visible){
   touchFeedback.setAttribute('aria-hidden',String(!visible));
 }
 function resetTouchFeedback(){feedbackKey='';feedbackUntil=0;showTouchFeedback(false);}
+function touchCaption(zone,behavior){
+  const responses=touchResponses[zone];
+  if(!Object.hasOwn(responses,behavior))return touchLabels[zone];
+  const response=zone==='tail'&&stage.dataset.contact==='false'?'松手后慢慢收回':responses[behavior];
+  return touchLabels[zone]+' · '+response;
+}
 function updateTouchFeedback(now){
   const zone=stage.dataset.touchZone;
   if(!Object.hasOwn(touchLabels,zone)){resetTouchFeedback();return;}
   const paw=zone==='paw'&&['1','2'].includes(stage.dataset.touchPaw)?stage.dataset.touchPaw:'';
-  const next=zone+':'+paw+':'+(stage.dataset.behavior||'');
+  const behavior=stage.dataset.behavior||'';
+  const tailContact=zone==='tail'&&stage.dataset.contact==='false'?'released':'';
+  const next=zone+':'+paw+':'+behavior+':'+tailContact;
   if(next!==feedbackKey){
     feedbackKey=next;feedbackUntil=now+2800;
-    if(touchFeedback.textContent!==touchLabels[zone])touchFeedback.textContent=touchLabels[zone];
+    const caption=touchCaption(zone,behavior);
+    if(touchFeedback.textContent!==caption)touchFeedback.textContent=caption;
   }
   showTouchFeedback(now<feedbackUntil);
 }
@@ -50,7 +70,12 @@ async function choose(id){
   if(!scene||!names[id])return;
   wanted=id;const current=++ticket;stage.setAttribute('aria-busy','true');$('#retry').hidden=true;
   try{
-    let img=images.get(id);if(!img){img=await scene.load(`./assets/${id}.webp`);images.set(id,img);}
+    let img=images.get(id);
+    if(!img){
+      const artwork=id==='sheepdog'?'rana':id;
+      img=await scene.load(`./assets/${artwork}.webp`);
+      images.set(id,img);
+    }
     if(current!==ticket)return;
     selection=id;scene.setImage(img,id);resetTouchFeedback();care?.selectDog(id);stage.dataset.ready='true';stage.dataset.selected=id;stage.setAttribute('aria-label',`抚摸${names[id]}`);
     for(const b of buttons)b.setAttribute('aria-pressed',String(b.dataset.dog===id));
